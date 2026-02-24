@@ -30,12 +30,7 @@ app.get("/api/slots", (req, res) => {
 
 app.post("/api/book", (req, res) => {
   const { slot, name } = req.body;
-app.delete("/api/cancel/:slot", (req, res) => {
-  const slot = req.params.slot;
-  db.run("DELETE FROM bookings WHERE slot = ?", [slot], function(err) {
-    if (err) return res.status(500).json(err);
-    res.json({ message: "Booking cancelled" });
-  });
+
   db.run(
     "INSERT INTO bookings (slot, name) VALUES (?, ?)",
     [slot, name],
@@ -48,10 +43,15 @@ app.delete("/api/cancel/:slot", (req, res) => {
   );
 });
 
+app.delete("/api/cancel/:slot", (req, res) => {
+  const slot = req.params.slot;
 
+  db.run("DELETE FROM bookings WHERE slot = ?", [slot], function(err) {
+    if (err) return res.status(500).json(err);
+    res.json({ message: "Booking cancelled" });
+  });
+});
 
 app.listen(PORT, () => {
-  console.log("Server running at http://localhost:3000");
+  console.log(`Server running on port ${PORT}`);
 });
-})
-

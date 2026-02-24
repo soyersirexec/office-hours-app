@@ -2,16 +2,13 @@ const express = require("express");
 const sqlite3 = require("sqlite3").verbose();
 const path = require("path");
 
-app.use(express.static(path.join(__dirname, "public")));
-
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-app.use(express.json());
-app.use(express.static("public"));
-
+// Database
 const db = new sqlite3.Database("bookings.db");
 
+// Create table if it doesn't exist
 db.run(`
   CREATE TABLE IF NOT EXISTS bookings (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -20,6 +17,10 @@ db.run(`
   )
 `);
 
+app.use(express.json());
+app.use(express.static(path.join(__dirname, "public")));
+
+// Get all bookings
 app.get("/api/slots", (req, res) => {
   db.all("SELECT slot, name FROM bookings", [], (err, rows) => {
     if (err) return res.status(500).json(err);
@@ -30,6 +31,7 @@ app.get("/api/slots", (req, res) => {
   });
 });
 
+// Book a slot
 app.post("/api/book", (req, res) => {
   const { slot, name } = req.body;
 
@@ -45,6 +47,7 @@ app.post("/api/book", (req, res) => {
   );
 });
 
+// Cancel booking
 app.delete("/api/cancel/:slot", (req, res) => {
   const slot = req.params.slot;
 

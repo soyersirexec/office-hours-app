@@ -2,8 +2,10 @@
 const express = require("express");
 const path = require("path");
 const { Pool } = require("pg");
-const fs = require("fs");
-const path = require("path");
+
+const app = express();
+const PORT = process.env.PORT || 3000;
+const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || "Www1903121912-";
 
 const bookingsPath = path.join(__dirname, "bookings.json");
 
@@ -23,8 +25,8 @@ app.get("/api/bookings", (req, res) => {
   res.json(readBookings());
 });
 
-app.post("/api/book", express.json(), (req, res) => {
-  const { slot } = req.body;
+app.post("/api/book", (req, res) => {
+  const { slot } = req.body || {};
   if (!slot) return res.status(400).json({ ok: false, error: "Missing slot" });
 
   const bookings = readBookings();
@@ -35,12 +37,6 @@ app.post("/api/book", express.json(), (req, res) => {
 
   res.json({ ok: true });
 });
-
-const app = express();
-const PORT = process.env.PORT || 3000;
-const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || "Www1903121912-";
-
-app.use(express.json());
 
 // Serve static files (except admin.html)
 app.use((req, res, next) => {

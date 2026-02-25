@@ -5,7 +5,7 @@ const { Pool } = require("pg");
 
 const app = express();
 const PORT = process.env.PORT || 3000;
-const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || "mypassword123";
+const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || "karakartal94";
 
 app.use(express.json());
 

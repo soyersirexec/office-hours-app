@@ -1,3 +1,5 @@
+// Quick admin password
+const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || "karakartal94";
 const express = require("express");
 const sqlite3 = require("sqlite3").verbose();
 const path = require("path");
@@ -18,7 +20,18 @@ db.run(`
 `);
 
 app.use(express.json());
-app.use(express.static(path.join(__dirname, "public")));
+// Serve all public files EXCEPT admin.html
+app.use((req, res, next) => {
+  if (req.path === "/admin.html") return next(); // skip for admin
+  express.static(path.join(__dirname, "public"))(req, res, next);
+});
+app.get("/admin.html", (req, res) => {
+  const password = req.query.pw;
+  if (password !== ADMIN_PASSWORD) {
+    return res.status(401).send("Unauthorized: wrong password");
+  }
+  res.sendFile(path.join(__dirname, "public", "admin.html"));
+});
 
 // Get all bookings
 app.get("/api/slots", (req, res) => {

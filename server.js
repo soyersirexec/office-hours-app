@@ -57,6 +57,16 @@ app.delete("/api/cancel/:slot", (req, res) => {
   });
 });
 
+// Self-ping to reduce sleeping
+const SELF_URL = process.env.RENDER_EXTERNAL_URL;
+
+if (SELF_URL) {
+  setInterval(() => {
+    fetch(SELF_URL)
+      .then(() => console.log("Self ping successful"))
+      .catch(err => console.log("Self ping failed:", err.message));
+  }, 4 * 60 * 1000); // every 4 minutes
+}
 app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
 });

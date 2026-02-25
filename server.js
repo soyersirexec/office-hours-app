@@ -13,7 +13,7 @@ app.use(express.json());
 // IMPORTANT: On Supabase/Render you usually need SSL.
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
-  ssl: process.env.NODE_ENV === "production" ? { rejectUnauthorized: false } : false,
+  ssl: { rejectUnauthorized: false },
 });
 
 // Create bookings table if it doesn't exist (schema matches API)

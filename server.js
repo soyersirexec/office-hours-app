@@ -22,8 +22,7 @@ const path = require("path");
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// Database
-const db = new sqlite3.Database("bookings.db");
+
 
 // Create table if it doesn't exist
 db.run(`

@@ -72,7 +72,18 @@ app.post("/api/book", async (req, res) => {
     res.status(500).json({ ok: false, error: "db_error" });
   }
 });
+// Admin page (password protected) — MUST be before express.static
+app.get("/admin.html", (req, res) => {
+  const password = req.query.pw;
+  if (password !== ADMIN_PASSWORD) return res.status(401).send("Unauthorized");
+  return res.sendFile(path.join(__dirname, "public", "admin.html"));
+});
 
+// Serve static files EXCEPT admin.html
+app.use((req, res, next) => {
+  if (req.path === "/admin.html") return next();
+  express.static(path.join(__dirname, "public"))(req, res, next);
+});
 // Optional: Admin cancel booking (password protected)
 app.delete("/api/cancel/:slot", async (req, res) => {
   const pw = req.query.pw;
@@ -88,14 +99,6 @@ app.delete("/api/cancel/:slot", async (req, res) => {
   }
 });
 
-// ---- Static files + admin page ----
-app.use(express.static(path.join(__dirname, "public")));
-
-app.get("/admin.html", (req, res) => {
-  const password = req.query.pw;
-  if (password !== ADMIN_PASSWORD) return res.status(401).send("Unauthorized");
-  res.sendFile(path.join(__dirname, "public", "admin.html"));
-});
 
 // Self-ping (Render)
 const SELF_URL = process.env.RENDER_EXTERNAL_URL;

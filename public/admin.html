@@ -1,38 +1,56 @@
-<!DOCTYPE html>
-<html>
-<head>
-  <title>Admin Panel</title>
-</head>
-<body>
-  <h1>Admin - Cancel Bookings</h1>
-  <div id="adminSlots"></div>
+<script>
+// put your admin password here (or read from input)
+const ADMIN_PASSWORD = "Www1903121912-";
 
-  <script>
-    async function loadAdmin() {
-      const res = await fetch("/api/slots");
-      const bookings = await res.json();
+// Example: assume you have a table of slots
+async function loadSlots() {
+  const res = await fetch("/api/slots");
+  const bookings = await res.json();
+  const table = document.getElementById("slotsTable");
+  table.innerHTML = "";
 
-      const container = document.getElementById("adminSlots");
-      container.innerHTML = "";
+  for (const slot in bookings) {
+    const row = document.createElement("tr");
 
-      for (let slot in bookings) {
-        const div = document.createElement("div");
-        div.innerHTML = `
-          ${slot} - ${bookings[slot]}
-          <button onclick="cancelSlot('${slot}')">Cancel</button>
-        `;
-        container.appendChild(div);
-      }
+    const slotCell = document.createElement("td");
+    slotCell.textContent = slot;
+
+    const nameCell = document.createElement("td");
+    nameCell.textContent = bookings[slot];
+
+    const actionCell = document.createElement("td");
+    const btn = document.createElement("button");
+    btn.textContent = "Cancel";
+    btn.onclick = () => cancelSlot(slot);
+    actionCell.appendChild(btn);
+
+    row.appendChild(slotCell);
+    row.appendChild(nameCell);
+    row.appendChild(actionCell);
+
+    table.appendChild(row);
+  }
+}
+
+// cancel a booking
+async function cancelSlot(slot) {
+  try {
+    const res = await fetch(`/api/cancel/${slot}?pw=${encodeURIComponent(ADMIN_PASSWORD)}`, {
+      method: "DELETE"
+    });
+    const data = await res.json();
+
+    if (res.ok) {
+      alert(data.message);
+      loadSlots(); // refresh table
+    } else {
+      alert("Error: " + data.message);
     }
+  } catch (err) {
+    alert("Error: " + err.message);
+  }
+}
 
-    async function cancelSlot(slot) {
-      await fetch("/api/cancel/" + encodeURIComponent(slot), {
-        method: "DELETE"
-      });
-      loadAdmin();
-    }
-
-    loadAdmin();
-  </script>
-</body>
-</html>
+// initialize table on page load
+window.onload = loadSlots;
+</script>

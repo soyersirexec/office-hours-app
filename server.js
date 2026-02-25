@@ -6,36 +6,45 @@ const { Pool } = require("pg");
 const app = express();
 const PORT = process.env.PORT || 3000;
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || "Www1903121912-";
+app.use(express.json());
 
-const bookingsPath = path.join(__dirname, "bookings.json");
 
-function readBookings() {
+// GET all bookings
+app.get("/api/bookings", async (req, res) => {
   try {
-    return JSON.parse(fs.readFileSync(bookingsPath, "utf8"));
-  } catch {
-    return {};
+    const { rows } = await pool.query("SELECT slot, booked_at FROM bookings");
+    const out = {};
+    for (const r of rows) out[r.slot] = { bookedAt: r.booked_at };
+    res.json(out);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ ok: false, error: "db_error" });
   }
-}
-
-function writeBookings(data) {
-  fs.writeFileSync(bookingsPath, JSON.stringify(data, null, 2));
-}
-
-app.get("/api/bookings", (req, res) => {
-  res.json(readBookings());
 });
 
-app.post("/api/book", (req, res) => {
+// POST book a slot (409 if already booked)
+app.post("/api/book", async (req, res) => {
   const { slot } = req.body || {};
   if (!slot) return res.status(400).json({ ok: false, error: "Missing slot" });
 
-  const bookings = readBookings();
-  if (bookings[slot]) return res.status(409).json({ ok: false, error: "Already booked" });
+  try {
+    const q = `
+      INSERT INTO bookings (slot)
+      VALUES ($1)
+      ON CONFLICT (slot) DO NOTHING
+      RETURNING slot
+    `;
+    const result = await pool.query(q, [slot]);
 
-  bookings[slot] = { bookedAt: Date.now() };
-  writeBookings(bookings);
+    if (result.rowCount === 0) {
+      return res.status(409).json({ ok: false, error: "Already booked" });
+    }
 
-  res.json({ ok: true });
+    res.json({ ok: true });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ ok: false, error: "db_error" });
+  }
 });
 
 // Serve static files (except admin.html)

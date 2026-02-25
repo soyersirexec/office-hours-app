@@ -61,7 +61,7 @@ app.post("/api/book", async (req, res) => {
 // Cancel booking (admin only)
 app.delete("/api/cancel/:slot", async (req, res) => {
   const pw = req.query.pw;
-  if (pw !== Www1903121912-) return res.status(401).json({ message: "Unauthorized" });
+  if (pw !== ADMIN_PASSWORD) return res.status(401).json({ message: "Unauthorized" });
 
   const slot = req.params.slot;
   try {

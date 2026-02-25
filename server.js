@@ -1,13 +1,27 @@
-// Quick admin password
-const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || "karakartal94";
+// server.js
 const express = require("express");
+const path = require("path");
 const { Pool } = require("pg");
-const pool = new Pool({
-  connectionString: process.env.DATABASE_URL,
-  ssl: { rejectUnauthorized: false }
+
+const app = express();
+const PORT = process.env.PORT || 3000;
+const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || "mypassword123";
+
+app.use(express.json());
+
+// Serve static files (except admin.html)
+app.use((req, res, next) => {
+  if (req.path === "/admin.html") return next(); // skip admin
+  express.static(path.join(__dirname, "public"))(req, res, next);
 });
 
-// Create table if it doesn't exist
+// Postgres connection (Supabase)
+const pool = new Pool({
+  connectionString: process.env.DATABASE_URL,
+  ssl: { rejectUnauthorized: false } // required for Supabase
+});
+
+// Create bookings table if it doesn't exist
 (async () => {
   await pool.query(`
     CREATE TABLE IF NOT EXISTS bookings (
@@ -17,37 +31,9 @@ const pool = new Pool({
     )
   `);
 })();
-const path = require("path");
-
-const app = express();
-const PORT = process.env.PORT || 3000;
-
-
-
-// Create table if it doesn't exist
-db.run(`
-  CREATE TABLE IF NOT EXISTS bookings (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    slot TEXT UNIQUE,
-    name TEXT
-  )
-`);
-
-app.use(express.json());
-// Serve all public files EXCEPT admin.html
-app.use((req, res, next) => {
-  if (req.path === "/admin.html") return next(); // skip for admin
-  express.static(path.join(__dirname, "public"))(req, res, next);
-});
-aapp.get("/admin.html", (req, res) => {
-  const password = req.query.pw;
-  if (password !== ADMIN_PASSWORD) return res.status(401).send("Unauthorized");
-  res.sendFile(path.join(__dirname, "public", "admin.html"));
-});
 
 // Get all bookings
-app.get("/api/slots", (req, res) => {
-  app.get("/api/slots", async (req, res) => {
+app.get("/api/slots", async (req, res) => {
   try {
     const { rows } = await pool.query("SELECT slot, name FROM bookings");
     const bookings = {};
@@ -57,13 +43,9 @@ app.get("/api/slots", (req, res) => {
     res.status(500).json(err);
   }
 });
-});
 
 // Book a slot
-app.post("/api/book", (req, res) => {
-  const { slot, name } = req.body;
-
-  app.post("/api/book", async (req, res) => {
+app.post("/api/book", async (req, res) => {
   const { slot, name } = req.body;
   try {
     await pool.query(
@@ -75,9 +57,8 @@ app.post("/api/book", (req, res) => {
     res.status(400).json({ message: "Slot already booked" });
   }
 });
-});
 
-// Cancel booking
+// Cancel booking (admin only)
 app.delete("/api/cancel/:slot", async (req, res) => {
   const pw = req.query.pw;
   if (pw !== ADMIN_PASSWORD) return res.status(401).json({ message: "Unauthorized" });
@@ -91,15 +72,23 @@ app.delete("/api/cancel/:slot", async (req, res) => {
   }
 });
 
-// Self-ping to reduce sleeping
+// Admin page (password protected)
+app.get("/admin.html", (req, res) => {
+  const password = req.query.pw;
+  if (password !== ADMIN_PASSWORD) return res.status(401).send("Unauthorized");
+  res.sendFile(path.join(__dirname, "public", "admin.html"));
+});
+
+// Self-ping to keep free Render instance awake
 const SELF_URL = process.env.RENDER_EXTERNAL_URL;
 if (SELF_URL) {
   setInterval(() => {
     fetch(SELF_URL)
       .then(() => console.log("Self ping successful"))
       .catch(err => console.log("Self ping failed:", err.message));
-  }, 4 * 60 * 1000);
+  }, 4 * 60 * 1000); // every 4 minutes
 }
+
 app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
 });

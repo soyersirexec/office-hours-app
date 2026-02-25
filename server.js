@@ -98,7 +98,18 @@ app.delete("/api/cancel/:slot", async (req, res) => {
     res.status(500).json({ message: "db_error" });
   }
 });
-
+// Backward-compatible: old admin page expects /api/slots
+app.get("/api/slots", async (req, res) => {
+  try {
+    const { rows } = await pool.query("SELECT slot, name FROM bookings");
+    const out = {};
+    for (const r of rows) out[r.slot] = r.name || null;
+    res.json(out);
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ ok: false, error: "db_error" });
+  }
+});
 
 // Self-ping (Render)
 const SELF_URL = process.env.RENDER_EXTERNAL_URL;

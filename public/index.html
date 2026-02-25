@@ -3,8 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>ANKARA MEDIPOL UNIVERSITY 
-    SCHOOL OF FOREIGN LANGUAGES APPOINTMENT SYSTEM
+  <title>AMPAS BOOKING SYSTEM
   </title>
   <!-- Tailwind CDN -->
   <script src="https://cdn.tailwindcss.com"></script>
@@ -13,7 +12,8 @@
 
   <!-- Banner -->
   <header class="bg-blue-700 text-white p-6 shadow-md">
-    <h1 class="text-3xl font-bold">AMPAS Booking System</h1>
+    <h1 class="text-3xl font-bold">ANKARA MEDIPOL UNIVERSITY 
+    SCHOOL OF FOREIGN LANGUAGES APPOINTMENT SYSTEM</h1>
     <p class="text-sm mt-1">Book Speaking Center sessions easily with one click.</p>
   </header>
 
@@ -22,7 +22,7 @@
     <div class="border-b border-gray-300">
       <nav class="flex space-x-4" aria-label="Tabs">
         <button class="tab-button border-b-2 border-blue-700 text-blue-700 py-2 px-4 font-medium" data-tab="appointments">
-          Appointments
+          Speaking Center
         </button>
         <!-- Future tabs can be added here -->
       </nav>
@@ -46,12 +46,18 @@
     </div>
   </div>
 
-  <!-- Tuesday 7 March -->
+  <!-- Tuesday 3 February -->
   <div class="p-4 bg-white rounded shadow">
-    <h2 class="font-semibold mb-2">Tuesday, 2 Fe</h2>
+    <h2 class="font-semibold mb-2">Tuesday, 3 February</h2>
     <div class="flex flex-wrap gap-2">
-      <button class="slot bg-green-500 text-white px-3 py-1 rounded" data-slot="7mar-morning">09:00 - 09:30</button>
-      <button class="slot bg-green-500 text-white px-3 py-1 rounded" data-slot="7mar-midday">10:00 - 10:30</button>
+    <button class="slot bg-green-500 text-white px-3 py-1 rounded" data-slot="3feb-morning">09:00 - 09:30</button>
+      <button class="slot bg-green-500 text-white px-3 py-1 rounded" data-slot="3feb-morning">10:00 - 10:30</button>
+      <button class="slot bg-green-500 text-white px-3 py-1 rounded" data-slot="3feb-morning">10:45 - 11:15</button>
+      <button class="slot bg-green-500 text-white px-3 py-1 rounded" data-slot="3feb-morning">11:15 - 11:45</button>
+      <button class="slot bg-green-500 text-white px-3 py-1 rounded" data-slot="3feb-morning">12:00 - 12:30</button>
+      <button class="slot bg-green-500 text-white px-3 py-1 rounded" data-slot="3feb-afternoon">13:15 - 13:45</button>
+      <button class="slot bg-green-500 text-white px-3 py-1 rounded" data-slot="3feb-afternoon">13:45 - 14:15</button>
+      <button class="slot bg-green-500 text-white px-3 py-1 rounded" data-slot="3feb-afternoon">14:30 - 15:00</button>
     </div>
   </div>
 </div>
@@ -62,6 +68,19 @@
   <footer class="mt-12 text-center text-xs text-gray-500">
     Created by Serdar Soyer
   </footer>
-
+<script>
+  const slots = document.querySelectorAll(".slot");
+  slots.forEach(slot => {
+    slot.addEventListener("click", () => {
+      const confirmed = confirm(`Book this slot: ${slot.textContent}?`);
+      if (confirmed) {
+        slot.classList.remove("bg-green-500");
+        slot.classList.add("bg-red-500");
+        slot.disabled = true;
+        // TODO: Send booking to backend (Supabase / Render)
+      }
+    });
+  });
+</script>
 </body>
 </html>

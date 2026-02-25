@@ -459,20 +459,7 @@
   <footer class="mt-12 text-center text-xs text-gray-500">
     Created by Serdar Soyer
   </footer>
-<script>
-  const slots = document.querySelectorAll(".slot");
-  slots.forEach(slot => {
-    slot.addEventListener("click", () => {
-      const confirmed = confirm(`Book this slot: ${slot.textContent}?`);
-      if (confirmed) {
-        slot.classList.remove("bg-green-500");
-        slot.classList.add("bg-gray-400");
-        slot.disabled = true;
-        // TODO: Send booking to backend (Supabase / Render)
-      }
-    });
-  });
-</script>
+
 <script src="script.js"></script>
 </body>
 </html>

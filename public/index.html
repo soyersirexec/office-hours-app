@@ -1,139 +1,67 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-  <title>Office Hours Booking</title>
-  <style>
-    body {
-  font-family: system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
-  background: #f4f6f8;
-  max-width: 700px;
-  margin: 60px auto;
-}
-
-h1 {
-  text-align: center;
-  margin-bottom: 40px;
-}
-
-.slot {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  background: white;
-  padding: 16px 20px;
-  margin: 12px 0;
-  border-radius: 12px;
-  box-shadow: 0 4px 12px rgba(0,0,0,0.08);
-}
-
-button {
-  padding: 8px 16px;
-  border-radius: 8px;
-  border: none;
-  background: #2563eb;
-  color: white;
-  font-weight: 500;
-  transition: 0.2s ease;
-}
-
-button:hover {
-  background: #1e40af;
-}
-
-button:disabled {
-  background: #d1d5db;
-  cursor: not-allowed;
-}
-  </style>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ANKARA MEDIPOL UNIVERSITY 
+    SCHOOL OF FOREIGN LANGUAGES APPOINTMENT SYSTEM
+  </title>
+  <!-- Tailwind CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
 </head>
-<body>
- <h1>Book Office Hours</h1>
+<body class="bg-gray-50 text-gray-800 font-sans">
 
-<div id="message"></div>
+  <!-- Banner -->
+  <header class="bg-blue-700 text-white p-6 shadow-md">
+    <h1 class="text-3xl font-bold">AMPAS Booking System</h1>
+    <p class="text-sm mt-1">Book Speaking Center sessions easily with one click.</p>
+  </header>
 
-<div id="slots"></div>
+  <!-- Tabs container -->
+  <div class="mt-6 max-w-4xl mx-auto px-4">
+    <div class="border-b border-gray-300">
+      <nav class="flex space-x-4" aria-label="Tabs">
+        <button class="tab-button border-b-2 border-blue-700 text-blue-700 py-2 px-4 font-medium" data-tab="appointments">
+          Appointments
+        </button>
+        <!-- Future tabs can be added here -->
+      </nav>
+    </div>
 
-<!-- Booking Modal -->
-<div id="formContainer" style="display:none; margin-top:20px;">
-  <h3 id="selectedSlot"></h3>
-  <input id="nameInput" placeholder="Your Name" />
-  <button onclick="submitBooking()">Confirm Booking</button>
-  <button onclick="closeForm()">Cancel</button>
+    <!-- Tab content -->
+    <div id="appointments" class="tab-content mt-4">
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+  <!-- Monday 2 February -->
+  <div class="p-4 bg-white rounded shadow">
+    <h2 class="font-semibold mb-2">Monday, 2 February</h2>
+    <div class="flex flex-wrap gap-2">
+      <button class="slot bg-green-500 text-white px-3 py-1 rounded" data-slot="2feb-morning">09:00 - 09:30</button>
+      <button class="slot bg-green-500 text-white px-3 py-1 rounded" data-slot="2feb-morning">10:00 - 10:30</button>
+      <button class="slot bg-green-500 text-white px-3 py-1 rounded" data-slot="2feb-morning">10:45 - 11:15</button>
+      <button class="slot bg-green-500 text-white px-3 py-1 rounded" data-slot="2feb-morning">11:15 - 11:45</button>
+      <button class="slot bg-green-500 text-white px-3 py-1 rounded" data-slot="2feb-morning">12:00 - 12:30</button>
+      <button class="slot bg-green-500 text-white px-3 py-1 rounded" data-slot="2feb-afternoon">13:15 - 13:45</button>
+      <button class="slot bg-green-500 text-white px-3 py-1 rounded" data-slot="2feb-afternoon">13:45 - 14:15</button>
+      <button class="slot bg-green-500 text-white px-3 py-1 rounded" data-slot="2feb-afternoon">14:30 - 15:00</button>
+    </div>
+  </div>
+
+  <!-- Tuesday 7 March -->
+  <div class="p-4 bg-white rounded shadow">
+    <h2 class="font-semibold mb-2">Tuesday, 2 Fe</h2>
+    <div class="flex flex-wrap gap-2">
+      <button class="slot bg-green-500 text-white px-3 py-1 rounded" data-slot="7mar-morning">09:00 - 09:30</button>
+      <button class="slot bg-green-500 text-white px-3 py-1 rounded" data-slot="7mar-midday">10:00 - 10:30</button>
+    </div>
+  </div>
 </div>
+    </div>
+  </div>
 
-  <script>
-  const timeSlots = [
-    "Monday 2:00 PM",
-    "Monday 2:30 PM",
-    "Monday 3:00 PM",
-    "Wednesday 10:00 AM",
-    "Wednesday 10:30 AM"
-  ];
+  <!-- Footer / Creator credit -->
+  <footer class="mt-12 text-center text-xs text-gray-500">
+    Created by Serdar Soyer
+  </footer>
 
-  let currentSlot = null;
-
-  async function loadSlots() {
-    const res = await fetch("/api/slots");
-    const bookings = await res.json();
-
-    const container = document.getElementById("slots");
-    container.innerHTML = "";
-
-    timeSlots.forEach(slot => {
-      const div = document.createElement("div");
-      div.className = "slot";
-
-      const span = document.createElement("span");
-      span.textContent = slot;
-
-      const button = document.createElement("button");
-
-      if (bookings[slot]) {
-        button.textContent = "Booked";
-        button.disabled = true;
-      } else {
-        button.textContent = "Book";
-        button.onclick = () => openForm(slot);
-      }
-
-      div.appendChild(span);
-      div.appendChild(button);
-      container.appendChild(div);
-    });
-  }
-
-  function openForm(slot) {
-    currentSlot = slot;
-    document.getElementById("selectedSlot").innerText = slot;
-    document.getElementById("formContainer").style.display = "block";
-  }
-
-  function closeForm() {
-    document.getElementById("formContainer").style.display = "none";
-    document.getElementById("nameInput").value = "";
-  }
-
-  async function submitBooking() {
-    const name = document.getElementById("nameInput").value;
-    if (!name) return;
-
-    const res = await fetch("/api/book", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ slot: currentSlot, name })
-    });
-
-    if (res.ok) {
-      document.getElementById("message").innerText = "Booking confirmed!";
-      closeForm();
-      loadSlots();
-    } else {
-      document.getElementById("message").innerText = "Slot already booked.";
-    }
-  }
-
-  loadSlots();
-</script>
-  </script>
 </body>
 </html>

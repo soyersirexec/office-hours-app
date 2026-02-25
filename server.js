@@ -62,8 +62,12 @@ app.post("/api/book", (req, res) => {
 
 // Cancel booking
 app.delete("/api/cancel/:slot", (req, res) => {
-  const slot = req.params.slot;
+  const pw = req.query.pw;
+  if (pw !== ADMIN_PASSWORD) {
+    return res.status(401).json({ message: "Unauthorized: wrong password" });
+  }
 
+  const slot = req.params.slot;
   db.run("DELETE FROM bookings WHERE slot = ?", [slot], function(err) {
     if (err) return res.status(500).json(err);
     res.json({ message: "Booking cancelled" });

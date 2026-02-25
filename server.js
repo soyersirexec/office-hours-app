@@ -2,6 +2,39 @@
 const express = require("express");
 const path = require("path");
 const { Pool } = require("pg");
+const fs = require("fs");
+const path = require("path");
+
+const bookingsPath = path.join(__dirname, "bookings.json");
+
+function readBookings() {
+  try {
+    return JSON.parse(fs.readFileSync(bookingsPath, "utf8"));
+  } catch {
+    return {};
+  }
+}
+
+function writeBookings(data) {
+  fs.writeFileSync(bookingsPath, JSON.stringify(data, null, 2));
+}
+
+app.get("/api/bookings", (req, res) => {
+  res.json(readBookings());
+});
+
+app.post("/api/book", express.json(), (req, res) => {
+  const { slot } = req.body;
+  if (!slot) return res.status(400).json({ ok: false, error: "Missing slot" });
+
+  const bookings = readBookings();
+  if (bookings[slot]) return res.status(409).json({ ok: false, error: "Already booked" });
+
+  bookings[slot] = { bookedAt: Date.now() };
+  writeBookings(bookings);
+
+  res.json({ ok: true });
+});
 
 const app = express();
 const PORT = process.env.PORT || 3000;

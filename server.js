@@ -18,7 +18,7 @@ app.use((req, res, next) => {
 // Postgres connection (Supabase)
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
-  ssl: { rejectUnauthorized: false } // required for Supabase
+  //ssl: { rejectUnauthorized: false } // required for Supabase
 });
 
 // Create bookings table if it doesn't exist
@@ -31,6 +31,7 @@ const pool = new Pool({
     )
   `);
 })();
+
 
 // Get all bookings
 app.get("/api/slots", async (req, res) => {

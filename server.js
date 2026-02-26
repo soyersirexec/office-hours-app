@@ -218,6 +218,30 @@ app.post("/api/manage/cancel", async (req, res) => {
   }
 });
 
+// Cancel by token
+app.post("/api/manage/cancel", async (req, res) => {
+  const token = String((req.body && req.body.token) || "").trim();
+  if (!token) return res.status(400).json({ ok: false, error: "missing_token" });
+
+  try {
+    const tokenHash = crypto.createHash("sha256").update(token).digest("hex");
+
+    const result = await pool.query(
+      `DELETE FROM bookings
+       WHERE manage_token_hash = $1
+       RETURNING slot`,
+      [tokenHash]
+    );
+
+    if (result.rowCount === 0) return res.status(404).json({ ok: false, error: "not_found" });
+
+    return res.json({ ok: true, cancelledSlot: result.rows[0].slot });
+  } catch (err) {
+    console.error("MANAGE CANCEL ERROR:", err);
+    return res.status(500).json({ ok: false, error: "db_error" });
+  }
+});
+
 // Change by token
 app.post("/api/manage/change", async (req, res) => {
   const token = String((req.body && req.body.token) || "").trim();
@@ -232,7 +256,6 @@ app.post("/api/manage/change", async (req, res) => {
 
     const tokenHash = crypto.createHash("sha256").update(token).digest("hex");
 
-    // find current booking
     const cur = await client.query(
       `SELECT slot, name, student_no, email
        FROM bookings
@@ -253,21 +276,18 @@ app.post("/api/manage/change", async (req, res) => {
       return res.json({ ok: true, oldSlot: current.slot, newSlot });
     }
 
-    // ensure new slot is free
     const taken = await client.query(`SELECT 1 FROM bookings WHERE slot = $1 LIMIT 1`, [newSlot]);
     if (taken.rows.length) {
       await client.query("ROLLBACK");
       return res.status(409).json({ ok: false, error: "slot_taken" });
     }
 
-    // insert new booking first (keeps old booking safe)
     await client.query(
       `INSERT INTO bookings (slot, name, student_no, email, manage_token_hash)
        VALUES ($1, $2, $3, $4, $5)`,
       [newSlot, current.name, current.student_no, current.email, tokenHash]
     );
 
-    // delete old booking
     await client.query(`DELETE FROM bookings WHERE slot = $1`, [current.slot]);
 
     await client.query("COMMIT");
@@ -280,7 +300,6 @@ app.post("/api/manage/change", async (req, res) => {
     client.release();
   }
 });
-
 // Optional: Admin cancel booking (password protected)
 app.delete("/api/cancel/:slot", async (req, res) => {
   const pw = req.query.pw;

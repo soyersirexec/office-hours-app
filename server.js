@@ -195,70 +195,68 @@ app.get("/api/manage", async (req, res) => {
 
 // Cancel by token
 app.post("/api/manage/cancel", async (req, res) => {
-  app.post("/api/manage/change", async (req, res) => {
+  pp.post("/api/manage/change", async (req, res) => {
   const token = String((req.body && req.body.token) || "").trim();
   const newSlot = String((req.body && req.body.newSlot) || "").trim();
 
-  if (!token) return res.status(400).json({ ok: false, error: "missing_token" });
-  if (!newSlot) return res.status(400).json({ ok: false, error: "missing_newSlot" });
+  if (!token || !newSlot) {
+    return res.status(400).json({ ok: false, error: "missing_fields" });
+  }
 
-  const client = await pool.connect();
   try {
-    await client.query("BEGIN");
-
     const tokenHash = crypto.createHash("sha256").update(token).digest("hex");
 
     // find current booking
-    const cur = await client.query(
+    const { rows } = await pool.query(
       `SELECT slot, name, student_no, email
        FROM bookings
        WHERE manage_token_hash = $1
        LIMIT 1`,
       [tokenHash]
     );
-    if (!cur.rows.length) {
-      await client.query("ROLLBACK");
+
+    if (!rows.length) {
       return res.status(404).json({ ok: false, error: "not_found" });
     }
 
-    const { slot: oldSlot, name, student_no, email } = cur.rows[0];
+    const current = rows[0];
 
-    // if same slot, nothing to do
-    if (oldSlot === newSlot) {
-      await client.query("ROLLBACK");
-      return res.json({ ok: true, slot: oldSlot });
-    }
+    // start transaction
+    await pool.query("BEGIN");
 
-    // ensure new slot is free
-    const taken = await client.query(`SELECT 1 FROM bookings WHERE slot = $1 LIMIT 1`, [newSlot]);
-    if (taken.rows.length) {
-      await client.query("ROLLBACK");
+    // delete old booking
+    await pool.query(
+      `DELETE FROM bookings WHERE manage_token_hash = $1`,
+      [tokenHash]
+    );
+
+    // try to insert new slot with SAME token hash
+    const insert = await pool.query(
+      `INSERT INTO bookings (slot, name, student_no, email, manage_token_hash)
+       VALUES ($1, $2, $3, $4, $5)
+       ON CONFLICT (slot) DO NOTHING
+       RETURNING slot`,
+      [newSlot, current.name, current.student_no, current.email, tokenHash]
+    );
+
+    if (insert.rowCount === 0) {
+      // slot taken → restore old booking
+      await pool.query(
+        `INSERT INTO bookings (slot, name, student_no, email, manage_token_hash)
+         VALUES ($1, $2, $3, $4, $5)`,
+        [current.slot, current.name, current.student_no, current.email, tokenHash]
+      );
+
+      await pool.query("COMMIT");
       return res.status(409).json({ ok: false, error: "slot_taken" });
     }
 
-    // insert new booking with same student + same token hash, then delete old
-    await client.query(
-      `INSERT INTO bookings (slot, name, student_no, email, manage_token_hash)
-       VALUES ($1, $2, $3, $4, $5)`,
-      [newSlot, name, student_no, email, tokenHash]
-    );
-
-    await client.query(`DELETE FROM bookings WHERE slot = $1`, [oldSlot]);
-
-    await client.query("COMMIT");
-    return res.json({ ok: true, oldSlot, newSlot });
+    await pool.query("COMMIT");
+    return res.json({ ok: true, newSlot });
   } catch (err) {
-    await client.query("ROLLBACK");
+    await pool.query("ROLLBACK");
     console.error("MANAGE CHANGE ERROR:", err);
-
-    // one booking per student number / conflict etc.
-    if (err && err.code === "23505") {
-      return res.status(409).json({ ok: false, error: "conflict" });
-    }
-
     return res.status(500).json({ ok: false, error: "db_error" });
-  } finally {
-    client.release();
   }
 });
   const token = String((req.body && req.body.token) || "").trim();

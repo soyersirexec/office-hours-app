@@ -44,18 +44,23 @@ const pool = new Pool({
 });
 
 // ---------- DB init ----------
+// ---------- DB init (create + upgrade safely) ----------
 (async () => {
   try {
+    // Create table if missing (basic structure)
     await pool.query(`
       CREATE TABLE IF NOT EXISTS bookings (
         slot TEXT PRIMARY KEY,
         name TEXT,
-        student_no TEXT,
-        email TEXT,
         booked_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
       );
     `);
 
+    // Add new columns if they don't exist (safe for existing DB)
+    await pool.query(`ALTER TABLE bookings ADD COLUMN IF NOT EXISTS student_no TEXT;`);
+    await pool.query(`ALTER TABLE bookings ADD COLUMN IF NOT EXISTS email TEXT;`);
+
+    // Ensure one booking per student number
     await pool.query(`
       CREATE UNIQUE INDEX IF NOT EXISTS bookings_one_per_student_no
       ON bookings (student_no)

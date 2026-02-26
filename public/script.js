@@ -234,7 +234,7 @@ document.addEventListener("DOMContentLoaded", async () => {
 
   // ---- Pagination by day cards (no week grouping) ----
   const dayCards = Array.from(grid.querySelectorAll(".day-card"));
-  const perPage = 6;
+  const perPage = 2;
   let page = 1;
   const totalPages = Math.max(1, Math.ceil(dayCards.length / perPage));
 

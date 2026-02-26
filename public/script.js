@@ -1,5 +1,15 @@
 let notifyTimer = null;
+function showManageLink(token) {
+  const url = `${location.origin}/manage.html?token=${encodeURIComponent(token)}`;
 
+  // reuse your existing notify if you want, otherwise basic alert:
+  if (typeof showNotify === "function") {
+    showNotify("Booked ✅", `Manage / cancel / change: ${url}`);
+    return;
+  }
+
+  window.prompt("Manage / cancel / change link (copy):", url);
+}
 function notify({ type = "info", title = "Notice", message = "", ms } = {}) {
   const wrap = document.getElementById("notify");
   const card = document.getElementById("notifyCard");
@@ -314,6 +324,7 @@ slot.title = `Booked by: ${maskName(profile.name)}`;
   const data = await resp.json().catch(() => ({}));
 
   if (!resp.ok) {
+    if (data.manageToken) showManageLink(data.manageToken);
     // Not allowed -> retry modal
     if (resp.status === 403 && data?.error === "Not allowed") {
       notify({

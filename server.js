@@ -153,7 +153,7 @@ app.post("/api/book", async (req, res) => {
     // Remove later when you email it.
     console.log("MANAGE TOKEN:", manageToken, "slot:", slot, "student:", sn);
 
-    return res.json({ ok: true });
+    return res.json({ ok: true, manageToken });
   } catch (err) {
     // one booking per student number
     if (err && err.code === "23505") {

@@ -43,6 +43,17 @@ console.log("Allowed students loaded:", ALLOWED_STUDENTS.size);
 // ---------- Middleware ----------
 app.use(express.json());
 
+// no-cache for API responses (prevents weird stale results)
+app.use((req, res, next) => {
+  if (req.path.startsWith("/api/")) {
+    res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate, proxy-revalidate");
+    res.setHeader("Pragma", "no-cache");
+    res.setHeader("Expires", "0");
+    res.setHeader("Surrogate-Control", "no-store");
+  }
+  next();
+});
+
 // ---------- Postgres connection (Supabase) ----------
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
@@ -103,16 +114,15 @@ app.get("/api/bookings", async (req, res) => {
         email: r.email || null,
       };
     }
-    res.json(out);
+    return res.json(out);
   } catch (err) {
     console.error("BOOKINGS GET ERROR:", err);
-    res.status(500).json({ ok: false, error: "db_error" });
+    // IMPORTANT: return {} so the frontend doesn't break and wipe UI due to unexpected shape
+    return res.json({});
   }
 });
 
 app.post("/api/book", async (req, res) => {
-  console.log("HIT /api/book", new Date().toISOString());
-
   const { slot, name, studentNo, email } = req.body || {};
 
   if (!slot || !name || !studentNo || !email) {
@@ -128,12 +138,9 @@ app.post("/api/book", async (req, res) => {
     return res.status(403).json({ ok: false, error: "Not allowed" });
   }
 
-  // declare outside so catch can reference (if needed)
-  let manageToken = null;
-
   try {
     // Create manage token (store only hash in DB)
-    manageToken = crypto.randomBytes(32).toString("hex");
+    const manageToken = crypto.randomBytes(32).toString("hex");
     const manageTokenHash = crypto.createHash("sha256").update(manageToken).digest("hex");
 
     const q = `
@@ -149,10 +156,6 @@ app.post("/api/book", async (req, res) => {
       return res.status(409).json({ ok: false, error: "Slot already booked" });
     }
 
-    // TEMP (optional): if you want to see token in logs for testing, keep this.
-    // Remove later when you email it.
-    console.log("MANAGE TOKEN:", manageToken, "slot:", slot, "student:", sn);
-
     return res.json({ ok: true, manageToken });
   } catch (err) {
     // one booking per student number
@@ -165,7 +168,6 @@ app.post("/api/book", async (req, res) => {
   }
 });
 
-// Manage lookup by token (used for manage.html later)
 // Manage lookup by token
 app.get("/api/manage", async (req, res) => {
   const token = String(req.query.token || "").trim();
@@ -214,17 +216,19 @@ app.post("/api/manage/cancel", async (req, res) => {
     return res.status(500).json({ ok: false, error: "db_error" });
   }
 });
+
 // Optional: Admin cancel booking (password protected)
 app.delete("/api/cancel/:slot", async (req, res) => {
   const pw = req.query.pw;
   if (pw !== ADMIN_PASSWORD) return res.status(401).json({ message: "Unauthorized" });
 
-  const slot = req.params.slot;
+  const slot = decodeURIComponent(req.params.slot);
   try {
-    await pool.query("DELETE FROM bookings WHERE slot = $1", [slot]);
-    res.json({ message: "Booking cancelled" });
+    const result = await pool.query("DELETE FROM bookings WHERE slot = $1 RETURNING slot", [slot]);
+    if (result.rowCount === 0) return res.status(404).json({ message: "not_found" });
+    res.json({ message: "Booking cancelled", slot: result.rows[0].slot });
   } catch (err) {
-    console.error(err);
+    console.error("ADMIN CANCEL ERROR:", err);
     res.status(500).json({ message: "db_error" });
   }
 });
@@ -246,7 +250,7 @@ app.get("/api/appointment/:studentNo", async (req, res) => {
     if (!rows.length) return res.status(404).json({ ok: false, error: "not_found" });
     return res.json({ ok: true, booking: rows[0] });
   } catch (err) {
-    console.error(err);
+    console.error("APPOINTMENT GET ERROR:", err);
     return res.status(500).json({ ok: false, error: "db_error" });
   }
 });
@@ -259,8 +263,9 @@ app.get("/api/slots", async (req, res) => {
     for (const r of rows) out[r.slot] = r.name || null;
     res.json(out);
   } catch (err) {
-    console.error(err);
-    res.status(500).json({ ok: false, error: "db_error" });
+    console.error("SLOTS GET ERROR:", err);
+    // keep old admin from breaking
+    res.json({});
   }
 });
 

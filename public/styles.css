@@ -152,11 +152,14 @@
 /* Smaller, distinct info panel */
 /* Compact neutral info panel (doesn't blend into blue banner) */
 .sc-info{
-  margin: 10px 0 14px;      /* no left/right margin */
-  padding: 10px 0 8px;      /* remove side padding */
-  border-radius: 14px;
-  border: 1px solid rgba(255,255,255,.14);
+  margin: 18px 0 6px;   /* space below banner */
+}
+
+.sc-info-inner{
   background: rgba(17,24,39,.55);
+  border: 1px solid rgba(255,255,255,.14);
+  border-radius: 16px;
+  padding: 12px 14px 10px;
   box-shadow: 0 10px 28px rgba(0,0,0,.18);
 }
 
@@ -207,7 +210,11 @@
   white-space: nowrap;
   transition: transform .06s ease, background .15s ease, border-color .15s ease;
 }
-
+.page-container{
+  max-width: 1100px;   /* match banner content width */
+  margin: 0 auto;
+  padding: 0 20px;     /* same side padding as banner */
+}
 .sc-check-btn:hover{
   background: rgba(255,255,255,.12);
   border-color: rgba(255,255,255,.28);

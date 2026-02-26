@@ -1,3 +1,43 @@
+let notifyTimer = null;
+
+function notify({ type = "info", title = "Notice", message = "", ms = 4000 } = {}) {
+  const wrap = document.getElementById("notify");
+  const card = document.getElementById("notifyCard");
+  const icon = document.getElementById("notifyIcon");
+  const t = document.getElementById("notifyTitle");
+  const m = document.getElementById("notifyMsg");
+  const close = document.getElementById("notifyClose");
+
+  if (!wrap || !card || !icon || !t || !m || !close) return;
+
+  // reset classes
+  card.classList.remove("notify-success", "notify-error", "notify-warn", "notify-info");
+  card.classList.add(
+    type === "success" ? "notify-success" :
+    type === "error" ? "notify-error" :
+    type === "warn" ? "notify-warn" : "notify-info"
+  );
+
+  icon.textContent =
+    type === "success" ? "✅" :
+    type === "error" ? "⛔" :
+    type === "warn" ? "⚠️" : "ℹ️";
+
+  t.textContent = title;
+  m.textContent = message;
+
+  wrap.classList.remove("hidden");
+
+  const hide = () => wrap.classList.add("hidden");
+
+  close.onclick = () => {
+    if (notifyTimer) clearTimeout(notifyTimer);
+    hide();
+  };
+
+  if (notifyTimer) clearTimeout(notifyTimer);
+  notifyTimer = setTimeout(hide, ms);
+}
 document.addEventListener("DOMContentLoaded", async () => {
   const grid = document.getElementById("daysGrid");
   const prevBtn = document.getElementById("prevBtn");
@@ -176,10 +216,14 @@ document.addEventListener("DOMContentLoaded", async () => {
     slot.addEventListener("click", async () => {
   if (slot.disabled) return;
 
-  // ❗ Block if this specific slot is already booked (correct behavior)
+  // Block if this specific slot is already booked
   if (serverBooked[slot.dataset.slot]) {
     disableSlot(slot, true);
-    showToastNear(slot, "Slot already booked");
+    notify({
+      type: "warn",
+      title: "Slot taken",
+      message: "That time slot is already booked. Please choose another.",
+    });
     return;
   }
 
@@ -200,16 +244,27 @@ document.addEventListener("DOMContentLoaded", async () => {
       }),
     });
   } catch {
-    showToastNear(slot, "Network error");
+    notify({
+      type: "error",
+      title: "Connection problem",
+      message: "Cannot reach the server. Check your internet and try again.",
+      ms: 6000,
+    });
     return;
   }
 
   const data = await resp.json().catch(() => ({}));
 
   if (!resp.ok) {
-    // Show exact backend reason
-    if (resp.status === 403 && data.error === "Not allowed") {
-      showToastNear(slot, "Student number not allowed");
+    // Not allowed -> retry modal
+    if (resp.status === 403 && data?.error === "Not allowed") {
+      notify({
+        type: "error",
+        title: "Not allowed",
+        message: "Student number not found in the allowed list.",
+        ms: 6000,
+      });
+      clearProfile();
       await openProfileModal({
         force: true,
         errorText: "Student number not found. Try again.",
@@ -217,31 +272,58 @@ document.addEventListener("DOMContentLoaded", async () => {
       return;
     }
 
-    if (resp.status === 409 && data.error === "Already booked once") {
-      showToastNear(slot, "You already booked once");
+    if (resp.status === 409 && data?.error === "Already booked once") {
+      notify({
+        type: "error",
+        title: "Already booked",
+        message: "This student number has already booked a slot.",
+        ms: 6000,
+      });
       return;
     }
 
-    if (resp.status === 409 && data.error === "Slot already booked") {
+    if (resp.status === 409 && data?.error === "Slot already booked") {
       disableSlot(slot, true);
-      showToastNear(slot, "Slot already booked");
+      notify({
+        type: "warn",
+        title: "Slot taken",
+        message: "That time slot is already booked. Please choose another.",
+        ms: 6000,
+      });
       return;
     }
 
-    showToastNear(slot, data?.error || "Cannot book");
+    if (resp.status === 500 && data?.error === "db_error") {
+      notify({
+        type: "error",
+        title: "Server error",
+        message: "Database error. Please try again in a moment.",
+        ms: 7000,
+      });
+      return;
+    }
+
+    notify({
+      type: "error",
+      title: "Booking failed",
+      message: data?.error || `Cannot book (${resp.status})`,
+      ms: 6000,
+    });
     return;
   }
 
   // Success
-  serverBooked[slot.dataset.slot] = {
-    bookedAt: Date.now(),
-    name: profile.name,
-  };
-
+  serverBooked[slot.dataset.slot] = { bookedAt: Date.now(), name: profile.name };
   disableSlot(slot, true);
-  showToastNear(slot, "Booked");
-});
+
+  notify({
+    type: "success",
+    title: "Booked",
+    message: "Your slot has been reserved.",
+    ms: 5000,
   });
+});
+});
 
   // ---- Pagination by day cards (no week grouping) ----
   const dayCards = Array.from(grid.querySelectorAll(".day-card"));

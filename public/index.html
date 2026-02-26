@@ -31,7 +31,43 @@
     </div>
 
   </div>
+<section class="info-card" id="speakingInfo">
+  <div class="info-head">
+    <div>
+      <h2>Speaking Centre</h2>
+      <p>What it is, how to book, and what to prepare.</p>
+    </div>
+    <button class="btn small" id="checkApptBtn" type="button">Check my appointment</button>
+  </div>
 
+  <div class="info-grid">
+    <div class="info-box">
+      <h3>About</h3>
+      <p>
+        The Speaking Centre helps you practice speaking skills with short 1:1 sessions with Serdar Soyer.
+        Pick an available slot, enter your details, and you’re done.
+      </p>
+    </div>
+
+    <div class="info-box">
+      <h3>How to book</h3>
+      <ol>
+        <li>Select a <b>green</b> available slot.</li>
+        <li>Enter your <b>name</b>, <b>student number</b>, and <b>email</b>.</li>
+        <li>If your student number is allowed, the slot is reserved.</li>
+      </ol>
+    </div>
+
+    <div class="info-box">
+      <h3>Rules</h3>
+      <ul>
+        <li>One booking per student number.</li>
+        <li>Booked slots are locked.</li>
+        <li>Past dates are closed.</li>
+      </ul>
+    </div>
+  </div>
+</section>
   <!-- bottom accent line -->
   <div class="h-1 w-full bg-gradient-to-r from-white/60 to-transparent"></div>
 </header>
@@ -556,6 +592,28 @@
       </div>
       <button class="notify-close" id="notifyClose" aria-label="Close">✕</button>
     </div>
+  </div>
+</div>
+<div id="checkModal" class="modal hidden">
+  <div class="modal-card">
+    <div class="modal-header">
+      <h2>Check appointment</h2>
+      <p>Enter your student number to view your booking.</p>
+    </div>
+
+    <form id="checkForm" class="modal-body">
+      <label>
+        Student number
+        <input id="checkStudentNo" type="text" required />
+      </label>
+
+      <div id="checkError" class="error hidden"></div>
+
+      <div class="modal-actions">
+        <button type="button" id="checkCancel" class="btn secondary">Cancel</button>
+        <button type="submit" class="btn primary">Check</button>
+      </div>
+    </form>
   </div>
 </div>
 </body>

@@ -151,7 +151,26 @@ app.delete("/api/cancel/:slot", async (req, res) => {
     res.status(500).json({ message: "db_error" });
   }
 });
+app.get("/api/appointment/:studentNo", async (req, res) => {
+  const sn = String(req.params.studentNo || "").trim();
+  if (!sn) return res.status(400).json({ ok: false, error: "missing_studentNo" });
 
+  try {
+    const { rows } = await pool.query(
+      `SELECT slot, name, student_no, email, booked_at
+       FROM bookings
+       WHERE student_no = $1
+       LIMIT 1`,
+      [sn]
+    );
+
+    if (!rows.length) return res.status(404).json({ ok: false, error: "not_found" });
+    return res.json({ ok: true, booking: rows[0] });
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({ ok: false, error: "db_error" });
+  }
+});
 // Backward-compatible: old admin page expects /api/slots
 app.get("/api/slots", async (req, res) => {
   try {

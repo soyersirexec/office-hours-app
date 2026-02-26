@@ -395,7 +395,78 @@ slot.title = `Booked by: ${maskName(profile.name)}`;
       window.scrollTo({ top: 0, behavior: "smooth" });
     }
   });
+function openCheckModal() {
+  return new Promise((resolve) => {
+    const modal = document.getElementById("checkModal");
+    const form = document.getElementById("checkForm");
+    const snEl = document.getElementById("checkStudentNo");
+    const errEl = document.getElementById("checkError");
+    const cancelBtn = document.getElementById("checkCancel");
 
+    errEl.classList.add("hidden");
+    errEl.textContent = "";
+    snEl.value = "";
+
+    modal.classList.remove("hidden");
+    snEl.focus();
+
+    function close(val) {
+      modal.classList.add("hidden");
+      form.removeEventListener("submit", onSubmit);
+      cancelBtn.removeEventListener("click", onCancel);
+      resolve(val);
+    }
+
+    function onCancel() { close(null); }
+
+    function onSubmit(e) {
+      e.preventDefault();
+      const sn = snEl.value.trim();
+      if (!sn) {
+        errEl.textContent = "Please enter your student number.";
+        errEl.classList.remove("hidden");
+        return;
+      }
+      close(sn);
+    }
+
+    form.addEventListener("submit", onSubmit);
+    cancelBtn.addEventListener("click", onCancel);
+  });
+}
+
+async function checkAppointmentFlow() {
+  const studentNo = await openCheckModal();
+  if (!studentNo) return;
+
+  let resp;
+  try {
+    resp = await fetch(`/api/appointment/${encodeURIComponent(studentNo)}`, { cache: "no-store" });
+  } catch {
+    notify({ type: "error", title: "Connection problem", message: "Cannot reach the server. Try again.", ms: 6000 });
+    return;
+  }
+
+  const data = await resp.json().catch(() => ({}));
+
+  if (!resp.ok) {
+    if (resp.status === 404 && data?.error === "not_found") {
+      notify({ type: "warn", title: "No booking found", message: "No appointment exists for this student number.", ms: 6000 });
+      return;
+    }
+    notify({ type: "error", title: "Check failed", message: data?.error || `Error (${resp.status})`, ms: 6000 });
+    return;
+  }
+
+  const b = data.booking || {};
+  notify({
+    type: "success",
+    title: "Appointment found",
+    message: `Slot: ${b.slot} • Name: ${b.name || ""}`,
+    ms: 8000,
+  });
+}
+document.getElementById("checkApptBtn")?.addEventListener("click", checkAppointmentFlow);
   render();
   window.addEventListener("load", render);
 });

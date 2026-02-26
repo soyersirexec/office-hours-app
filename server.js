@@ -30,37 +30,50 @@ const mailer =
         host: SMTP_HOST,
         port: SMTP_PORT,
         secure: false,
+        requireTLS: true,
         auth: { user: SMTP_USER, pass: SMTP_PASS },
+        tls: { servername: SMTP_HOST },
+        connectionTimeout: 10000,
+        greetingTimeout: 10000,
+        socketTimeout: 15000,
       })
     : null;
 
+if (!mailer) {
+  console.log("EMAIL: disabled (missing SMTP_USER/SMTP_PASS env vars)");
+} else {
+  mailer
+    .verify()
+    .then(() => console.log("EMAIL: SMTP verified OK"))
+    .catch((e) => console.error("EMAIL: SMTP verify FAILED:", e));
+}
+
 async function sendManageLinkEmail({ to, name, slot, token }) {
   if (!mailer) return;
+  if (!PUBLIC_BASE_URL) {
+    console.log("EMAIL: skipped (missing PUBLIC_BASE_URL env var)");
+    return;
+  }
 
   const manageUrl = `${PUBLIC_BASE_URL}/manage.html?token=${encodeURIComponent(token)}`;
-
-  const subject = "Speaking Center Appointment – Manage Link";
-  const text =
-    `Hello${name ? " " + name : ""},\n\n` +
-    `Your appointment has been booked.\n\n` +
-    `Slot: ${slot}\n\n` +
-    `Manage (cancel/change): ${manageUrl}\n\n` +
-    `If you did not make this booking, please ignore this email.\n`;
-
-  const html =
-    `<p>Hello${name ? " " + escapeHtml(name) : ""},</p>` +
-    `<p>Your appointment has been booked.</p>` +
-    `<p><b>Slot:</b> ${escapeHtml(slot)}</p>` +
-    `<p><b>Manage (cancel/change):</b> <a href="${manageUrl}">${manageUrl}</a></p>` +
-    `<p>If you did not make this booking, please ignore this email.</p>`;
 
   await mailer.sendMail({
     from: FROM_EMAIL,
     to,
-    subject,
-    text,
-    html,
+    subject: "Speaking Center Appointment – Manage Link",
+    text:
+      `Hello${name ? " " + name : ""},\n\n` +
+      `Your appointment has been booked.\n\n` +
+      `Slot: ${slot}\n\n` +
+      `Manage (cancel/change): ${manageUrl}\n\n`,
+    html:
+      `<p>Hello${name ? " " + escapeHtml(name) : ""},</p>` +
+      `<p>Your appointment has been booked.</p>` +
+      `<p><b>Slot:</b> ${escapeHtml(slot)}</p>` +
+      `<p><b>Manage (cancel/change):</b> <a href="${manageUrl}">${manageUrl}</a></p>`,
   });
+
+  console.log("EMAIL: sent to", to);
 }
 
 function escapeHtml(s) {
@@ -222,12 +235,12 @@ app.post("/api/book", async (req, res) => {
       return res.status(409).json({ ok: false, error: "Slot already booked" });
     }
 
-    await sendManageLinkEmail({
+    sendManageLinkEmail({
   to: em,
   name: nm,
   slot,
   token: manageToken,
-});
+}).catch((e) => console.error("EMAIL SEND ERROR:", e));
 
 return res.json({ ok: true, manageToken });
   } catch (err) {

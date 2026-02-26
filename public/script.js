@@ -43,10 +43,12 @@ if (ms && ms > 0) {
   notifyTimer = setTimeout(hide, ms);
 }
 document.addEventListener("DOMContentLoaded", async () => {
+  document.querySelector(".sc-check-btn")?.addEventListener("click", checkAppointmentFlow);
   const grid = document.getElementById("daysGrid");
   const prevBtn = document.getElementById("prevBtn");
   const nextBtn = document.getElementById("nextBtn");
   const pageInfo = document.getElementById("pageInfo");
+
   if (!grid || !prevBtn || !nextBtn || !pageInfo) return;
 
   function getISOWeekKey(yyyy_mm_dd) {
@@ -470,7 +472,6 @@ async function checkAppointmentFlow() {
   ms: 0, // ✅ stays until dismissed
 });
 }
-document.getElementById("checkApptBtn")?.addEventListener("click", checkAppointmentFlow);
   render();
   window.addEventListener("load", render);
 });

@@ -195,15 +195,26 @@
 
 /* Stand-out button */
 .sc-check-btn{
-  border: 0;
+  border: 1px solid rgba(255,255,255,.18);
   border-radius: 999px;
-  padding: 10px 16px;
-  font-weight: 900;
+  padding: 8px 14px;
+  font-weight: 700;
+  font-size: 13px;
   cursor: pointer;
-  color: #0b1220;
-  background: linear-gradient(135deg, #fde047, #f97316);
-  box-shadow: 0 10px 25px rgba(249,115,22,.28);
+  color: #f8fafc;
+  background: rgba(255,255,255,.08);
+  box-shadow: 0 6px 16px rgba(0,0,0,.18);
   white-space: nowrap;
+  transition: transform .06s ease, background .15s ease, border-color .15s ease;
+}
+
+.sc-check-btn:hover{
+  background: rgba(255,255,255,.12);
+  border-color: rgba(255,255,255,.28);
+}
+
+.sc-check-btn:active{
+  transform: scale(.97);
 }
 .sc-check-btn:hover{ filter: brightness(1.05); }
 .sc-check-btn:active{ transform: scale(.98); }
@@ -211,4 +222,22 @@
 @media (max-width: 900px){
   .sc-info-grid{ grid-template-columns: 1fr; }
   .sc-check-btn{ width: 100%; }
+@media (max-width: 900px){
+  .sc-check-btn{
+    padding: 7px 12px;
+    font-size: 12.5px;
+    width: auto;           /* prevent full width */
+    max-width: 180px;      /* stops oversized look */
+  }
+
+  .sc-info-top{
+    align-items: center;   /* keeps button aligned with title */
+  }
+}
+@media (max-width: 480px){
+  .sc-check-btn{
+    font-size: 12px;
+    padding: 6px 10px;
+  }
+}
 }

@@ -74,7 +74,93 @@ async function sendManageLinkEmail({ to, name, slot, token }) {
     console.error("EMAIL: Resend error:", e);
   }
 }
+async function sendCancelledEmail({ to, name, oldSlot }) {
+  if (!RESEND_API_KEY || !RESEND_FROM) return;
+  if (!to) return;
 
+  const subject = "Speaking Center Appointment – Cancelled";
+  const text =
+    `Hello${name ? " " + name : ""},\n\n` +
+    `Your appointment has been cancelled.\n\n` +
+    `Slot: ${oldSlot}\n\n`;
+
+  const html =
+    `<p>Hello${name ? " " + escapeHtml(name) : ""},</p>` +
+    `<p>Your appointment has been cancelled.</p>` +
+    `<p><b>Slot:</b> ${escapeHtml(oldSlot)}</p>`;
+
+  try {
+    const resp = await fetch("https://api.resend.com/emails", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${RESEND_API_KEY}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        from: RESEND_FROM,
+        to: [to],
+        subject,
+        html,
+        text,
+      }),
+    });
+
+    if (!resp.ok) {
+      const body = await resp.text().catch(() => "");
+      console.error("EMAIL: cancel failed", resp.status, body);
+      return;
+    }
+
+    console.log("EMAIL: cancel sent to", to);
+  } catch (e) {
+    console.error("EMAIL: cancel error:", e);
+  }
+}
+
+async function sendChangedEmail({ to, name, oldSlot, newSlot }) {
+  if (!RESEND_API_KEY || !RESEND_FROM) return;
+  if (!to) return;
+
+  const subject = "Speaking Center Appointment – Changed";
+  const text =
+    `Hello${name ? " " + name : ""},\n\n` +
+    `Your appointment has been changed.\n\n` +
+    `Old slot: ${oldSlot}\n` +
+    `New slot: ${newSlot}\n\n`;
+
+  const html =
+    `<p>Hello${name ? " " + escapeHtml(name) : ""},</p>` +
+    `<p>Your appointment has been changed.</p>` +
+    `<p><b>Old slot:</b> ${escapeHtml(oldSlot)}</p>` +
+    `<p><b>New slot:</b> ${escapeHtml(newSlot)}</p>`;
+
+  try {
+    const resp = await fetch("https://api.resend.com/emails", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${RESEND_API_KEY}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        from: RESEND_FROM,
+        to: [to],
+        subject,
+        html,
+        text,
+      }),
+    });
+
+    if (!resp.ok) {
+      const body = await resp.text().catch(() => "");
+      console.error("EMAIL: change failed", resp.status, body);
+      return;
+    }
+
+    console.log("EMAIL: change sent to", to);
+  } catch (e) {
+    console.error("EMAIL: change error:", e);
+  }
+}
 function escapeHtml(s) {
   return String(s || "")
     .replaceAll("&", "&amp;")
@@ -270,6 +356,19 @@ app.post("/api/manage/cancel", async (req, res) => {
   try {
     const tokenHash = crypto.createHash("sha256").update(token).digest("hex");
 
+    // get booking first so we can email details
+    const cur = await pool.query(
+      `SELECT slot, name, email
+       FROM bookings
+       WHERE manage_token_hash = $1
+       LIMIT 1`,
+      [tokenHash]
+    );
+
+    if (!cur.rows.length) return res.status(404).json({ ok: false, error: "not_found" });
+
+    const b = cur.rows[0];
+
     const result = await pool.query(
       `DELETE FROM bookings
        WHERE manage_token_hash = $1
@@ -278,6 +377,11 @@ app.post("/api/manage/cancel", async (req, res) => {
     );
 
     if (result.rowCount === 0) return res.status(404).json({ ok: false, error: "not_found" });
+
+    // fire-and-forget email
+    sendCancelledEmail({ to: b.email, name: b.name, oldSlot: b.slot }).catch((e) =>
+      console.error("EMAIL CANCEL ERROR:", e)
+    );
 
     return res.json({ ok: true, cancelledSlot: result.rows[0].slot });
   } catch (err) {
@@ -335,6 +439,12 @@ app.post("/api/manage/change", async (req, res) => {
     );
 
     await client.query("COMMIT");
+    sendChangedEmail({
+  to: current.email,
+  name: current.name,
+  oldSlot: current.slot,
+  newSlot,
+}).catch((e) => console.error("EMAIL CHANGE ERROR:", e));
     return res.json({ ok: true, oldSlot: current.slot, newSlot });
   } catch (err) {
     await client.query("ROLLBACK");

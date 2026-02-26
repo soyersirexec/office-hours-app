@@ -4,6 +4,7 @@ const path = require("path");
 
 const express = require("express");
 const { Pool } = require("pg");
+const crypto = require("crypto");
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -64,6 +65,14 @@ const pool = new Pool({
     // Add new columns if they don't exist (safe for existing DB)
     await pool.query(`ALTER TABLE bookings ADD COLUMN IF NOT EXISTS student_no TEXT;`);
     await pool.query(`ALTER TABLE bookings ADD COLUMN IF NOT EXISTS email TEXT;`);
+    await pool.query(`ALTER TABLE bookings ADD COLUMN IF NOT EXISTS manage_token_hash TEXT;`);
+await pool.query(`ALTER TABLE bookings ADD COLUMN IF NOT EXISTS manage_token_created_at TIMESTAMPTZ NOT NULL DEFAULT NOW();`);
+
+await pool.query(`
+  CREATE UNIQUE INDEX IF NOT EXISTS bookings_manage_token_hash_unique
+  ON bookings (manage_token_hash)
+  WHERE manage_token_hash IS NOT NULL;
+`);
 
     // Ensure one booking per student number
     await pool.query(`
@@ -117,14 +126,21 @@ app.post("/api/book", async (req, res) => {
   }
 
   try {
+    // Create manage token (store only hash in DB)
+    const manageToken = crypto.randomBytes(32).toString("hex");
+    const manageTokenHash = crypto
+      .createHash("sha256")
+      .update(manageToken)
+      .digest("hex");
+
     const q = `
-      INSERT INTO bookings (slot, name, student_no, email)
-      VALUES ($1, $2, $3, $4)
+      INSERT INTO bookings (slot, name, student_no, email, manage_token_hash)
+      VALUES ($1, $2, $3, $4, $5)
       ON CONFLICT (slot) DO NOTHING
       RETURNING slot
     `;
 
-    const result = await pool.query(q, [slot, nm, sn, em]);
+    const result = await pool.query(q, [slot, nm, sn, em, manageTokenHash]);
 
     if (result.rowCount === 0) {
       return res.status(409).json({ ok: false, error: "Slot already booked" });
@@ -132,6 +148,7 @@ app.post("/api/book", async (req, res) => {
 
     return res.json({ ok: true });
   } catch (err) {
+  console.log("MANAGE TOKEN:", manageToken, "slot:", slot, "student:", sn);
     // one booking per student number
     if (err && err.code === "23505") {
       return res.status(409).json({ ok: false, error: "Already booked once" });
@@ -141,7 +158,29 @@ app.post("/api/book", async (req, res) => {
     return res.status(500).json({ ok: false, error: "db_error" });
   }
 });
+app.get("/api/manage", async (req, res) => {
+  const token = String(req.query.token || "").trim();
+  if (!token) return res.status(400).json({ ok: false, error: "missing_token" });
 
+  try {
+    const tokenHash = crypto.createHash("sha256").update(token).digest("hex");
+
+    const { rows } = await pool.query(
+      `SELECT slot, name, student_no, email, booked_at
+       FROM bookings
+       WHERE manage_token_hash = $1
+       LIMIT 1`,
+      [tokenHash]
+    );
+
+    if (!rows.length) return res.status(404).json({ ok: false, error: "not_found" });
+
+    return res.json({ ok: true, booking: rows[0] });
+  } catch (err) {
+    console.error(err);
+    return res.status(500).json({ ok: false, error: "db_error" });
+  }
+});
 // Optional: Admin cancel booking (password protected)
 app.delete("/api/cancel/:slot", async (req, res) => {
   const pw = req.query.pw;

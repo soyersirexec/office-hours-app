@@ -413,7 +413,8 @@ slot.title = `Booked by: ${maskName(profile.name)}`;
     if (page > 1) {
       page--;
       render();
-      window.scrollTo({ top: 0, behavior: "smooth" });
+      document.getElementById("appointmentsSection")
+  ?.scrollIntoView({ behavior: "smooth", block: "start" });
     }
   });
 
@@ -421,7 +422,8 @@ slot.title = `Booked by: ${maskName(profile.name)}`;
     if (page < totalPages) {
       page++;
       render();
-      window.scrollTo({ top: 0, behavior: "smooth" });
+      document.getElementById("appointmentsSection")
+  ?.scrollIntoView({ behavior: "smooth", block: "start" });
     }
   });
 function openCheckModal() {

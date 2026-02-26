@@ -3,24 +3,18 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>AMPAS
-  </title>
-  <!-- Tailwind CDN -->
+  <title>AMPAS</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <link rel="stylesheet" href="/styles.css">
 </head>
 <body class="bg-gray-100 text-gray-800 font-sans">
 
-  <!-- Banner -->
-<header class="relative bg-gradient-to-r from-blue-700 via-blue-600 to-blue-500 text-white shadow-md">
+<!-- Banner -->
+<header class="bg-gradient-to-r from-blue-700 via-blue-600 to-blue-500 text-white shadow-md">
   <div class="max-w-6xl mx-auto px-4 py-6 flex items-center gap-4">
-
-    <!-- Logo -->
     <img src="/img/medipol-logo.png"
          alt="Ankara Medipol University Logo"
          class="h-12 w-auto bg-white/90 rounded-lg p-1 shadow-sm" />
-
-    <!-- Text -->
     <div>
       <h1 class="text-xl md:text-2xl font-semibold tracking-tight">
         Speaking Center Appointment System
@@ -29,49 +23,53 @@
         Ankara Medipol University — School of Foreign Languages
       </p>
     </div>
-
   </div>
-  <div class="content-wrap">
-  <section class="sc-info" id="speakingInfo">
-  <div class="sc-info-top">
-    <div class="sc-info-title">
-      <h2>Speaking Center</h2>
-      <p>General Information</p>
+  <div class="h-1 w-full bg-gradient-to-r from-white/60 to-transparent"></div>
+</header>
+
+<!-- INFO CARD (clean centered, not full width) -->
+<div class="max-w-6xl mx-auto px-4 mt-6">
+  <section class="bg-white border border-gray-200 rounded-2xl p-6 shadow-sm">
+    <div class="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+      <div>
+        <h2 class="text-lg font-semibold text-gray-700">Speaking Center</h2>
+        <p class="text-sm text-gray-500">General Information</p>
+      </div>
+      <button class="sc-check-btn" id="checkApptBtn" type="button">
+        🔎 Check appointment
+      </button>
     </div>
 
-    <button class="sc-check-btn" id="checkApptBtn" type="button">🔎 Check appointment</button>
-  </div>
+    <hr class="my-4 border-gray-200" />
 
-  <hr class="sc-divider" />
+    <div class="grid md:grid-cols-3 gap-4 text-sm text-gray-600">
+      <div>
+        <h3 class="font-semibold text-gray-700 mb-2">About</h3>
+        <ul class="space-y-1">
+          <li>The Speaking Centre helps you practice speaking skills with short 1:1 sessions with Serdar Soyer.</li>
+          <li>Pick an available slot, enter your details, and you’re done.</li>
+        </ul>
+      </div>
 
-  <div class="sc-info-grid">
-    <div class="sc-info-box">
-      <h3>About</h3>
-      <ul>
-        <li>The Speaking Centre helps you practice speaking skills with short 1:1 sessions with Serdar Soyer.</li>
-        <li>Pick an available slot, enter your details, and you’re done.</li>
-      </ul>
+      <div>
+        <h3 class="font-semibold text-gray-700 mb-2">How to book</h3>
+        <ul class="space-y-1">
+          <li>Select a <b>green</b> available slot.</li>
+          <li>Enter your <b>name</b>, <b>student number</b>, and <b>email</b>.</li>
+          <li>If your student number is allowed, the slot is reserved.</li>
+        </ul>
+      </div>
+
+      <div>
+        <h3 class="font-semibold text-gray-700 mb-2">Notes</h3>
+        <ul class="space-y-1">
+          <li>One booking per student number.</li>
+          <li>Booked slots are locked.</li>
+          <li>Past dates are closed.</li>
+        </ul>
+      </div>
     </div>
-
-    <div class="sc-info-box">
-      <h3>How to book</h3>
-      <ul>
-        <li>Select a <b>green</b> available slot.</li>
-        <li>Enter your <b>name</b>, <b>student number</b>, and <b>email</b>.</li>
-        <li>If your student number is allowed, the slot is reserved.</li>
-      </ul>
-    </div>
-
-    <div class="sc-info-box">
-      <h3>Notes</h3>
-      <ul>
-        <li>One booking per student number.</li>
-        <li>Booked slots are locked.</li>
-        <li>Past dates are closed.</li>
-      </ul>
-    </div>
-  </div>
-</section>
+  </section>
 </div>
 
   <!-- bottom accent line -->
@@ -115,7 +113,7 @@
           <h2 class="font-semibold text-[15px] md:text-base text-gray-600 mb-3">Monday, 2 Mar 2026</h2>
           <div class="grid grid-cols-2 gap-2">
         <button class="slot bg-green-500 hover:bg-green-600 text-white py-2 rounded-lg text-sm font-medium transition" data-slot="2026-03-02-09-00">09:00 - 09:30</button>
-        <button class="slot bg-green-500 hover:bg-green-600 text-white py-2 rounded-lg text-sm font-medium transition" data-slot="2026-03-02-10-00">10:00 - 10:30</button>
+        <button class="slot bg-green-500 hover:bg-green-600 text-white py-2 rounded-lg text-sm font-medium transition" data-slot="2026-03-02-10-00">09:30 - 10:00</button>
         <button class="slot bg-green-500 hover:bg-green-600 text-white py-2 rounded-lg text-sm font-medium transition" data-slot="2026-03-02-10-45">10:45 - 11:15</button>
         <button class="slot bg-green-500 hover:bg-green-600 text-white py-2 rounded-lg text-sm font-medium transition" data-slot="2026-03-02-11-15">11:15 - 11:45</button>
         <button class="slot bg-green-500 hover:bg-green-600 text-white py-2 rounded-lg text-sm font-medium transition" data-slot="2026-03-02-12-00">12:00 - 12:30</button>
@@ -130,7 +128,8 @@
       <h2 class="font-semibold text-[15px] md:text-base text-gray-600 mb-3">Tuesday, 3 Mar 2026</h2>
       <div class="grid grid-cols-2 gap-2">
         <button class="slot bg-green-500 hover:bg-green-600 text-white py-2 rounded-lg text-sm font-medium transition" data-slot="2026-03-03-09-00">09:00 - 09:30</button>
-        <button class="slot bg-green-500 hover:bg-green-600 text-white py-2 rounded-lg text-sm font-medium transition" data-slot="2026-03-03-10-00">10:00 - 10:30</button>
+        <button class="slot bg-green-500 hover:bg-green-600 text-white py-2 rounded-lg text-sm font-medium transition" data-slot="2026-03-03-10-00">09:30 - 10:00</button>
+        <button class="slot bg-green-500 hover:bg-green-600 text-white py-2 rounded-lg text-sm font-medium transition" data-slot="2026-03-03-10-00">10:15 - 10:45</button>
         <button class="slot bg-green-500 hover:bg-green-600 text-white py-2 rounded-lg text-sm font-medium transition" data-slot="2026-03-03-10-45">10:45 - 11:15</button>
         <button class="slot bg-green-500 hover:bg-green-600 text-white py-2 rounded-lg text-sm font-medium transition" data-slot="2026-03-03-11-15">11:15 - 11:45</button>
         <button class="slot bg-green-500 hover:bg-green-600 text-white py-2 rounded-lg text-sm font-medium transition" data-slot="2026-03-03-12-00">12:00 - 12:30</button>
@@ -145,7 +144,8 @@
       <h2 class="font-semibold text-[15px] md:text-base text-gray-600 mb-3">Monday, 9 Mar 2026</h2>
       <div class="grid grid-cols-2 gap-2">
         <button class="slot bg-green-500 hover:bg-green-600 text-white py-2 rounded-lg text-sm font-medium transition" data-slot="2026-03-09-09-00">09:00 - 09:30</button>
-        <button class="slot bg-green-500 hover:bg-green-600 text-white py-2 rounded-lg text-sm font-medium transition" data-slot="2026-03-09-10-00">10:00 - 10:30</button>
+        <button class="slot bg-green-500 hover:bg-green-600 text-white py-2 rounded-lg text-sm font-medium transition" data-slot="2026-03-09-10-00">09:30 - 10:00</button>
+        <button class="slot bg-green-500 hover:bg-green-600 text-white py-2 rounded-lg text-sm font-medium transition" data-slot="2026-03-03-10-00">10:15 - 10:45</button>
         <button class="slot bg-green-500 hover:bg-green-600 text-white py-2 rounded-lg text-sm font-medium transition" data-slot="2026-03-09-10-45">10:45 - 11:15</button>
         <button class="slot bg-green-500 hover:bg-green-600 text-white py-2 rounded-lg text-sm font-medium transition" data-slot="2026-03-09-11-15">11:15 - 11:45</button>
         <button class="slot bg-green-500 hover:bg-green-600 text-white py-2 rounded-lg text-sm font-medium transition" data-slot="2026-03-09-12-00">12:00 - 12:30</button>
@@ -160,7 +160,8 @@
       <h2 class="font-semibold text-[15px] md:text-base text-gray-600 mb-3">Tuesday, 10 Mar 2026</h2>
       <div class="grid grid-cols-2 gap-2">
         <button class="slot bg-green-500 hover:bg-green-600 text-white py-2 rounded-lg text-sm font-medium transition" data-slot="2026-03-10-09-00">09:00 - 09:30</button>
-        <button class="slot bg-green-500 hover:bg-green-600 text-white py-2 rounded-lg text-sm font-medium transition" data-slot="2026-03-10-10-00">10:00 - 10:30</button>
+        <button class="slot bg-green-500 hover:bg-green-600 text-white py-2 rounded-lg text-sm font-medium transition" data-slot="2026-03-10-10-00">09:30 - 10:00</button>
+        <button class="slot bg-green-500 hover:bg-green-600 text-white py-2 rounded-lg text-sm font-medium transition" data-slot="2026-03-03-10-00">10:15 - 10:45</button>
         <button class="slot bg-green-500 hover:bg-green-600 text-white py-2 rounded-lg text-sm font-medium transition" data-slot="2026-03-10-10-45">10:45 - 11:15</button>
         <button class="slot bg-green-500 hover:bg-green-600 text-white py-2 rounded-lg text-sm font-medium transition" data-slot="2026-03-10-11-15">11:15 - 11:45</button>
         <button class="slot bg-green-500 hover:bg-green-600 text-white py-2 rounded-lg text-sm font-medium transition" data-slot="2026-03-10-12-00">12:00 - 12:30</button>
@@ -175,7 +176,8 @@
       <h2 class="font-semibold text-[15px] md:text-base text-gray-600 mb-3">Monday, 16 Mar 2026</h2>
       <div class="grid grid-cols-2 gap-2">
         <button class="slot bg-green-500 hover:bg-green-600 text-white py-2 rounded-lg text-sm font-medium transition" data-slot="2026-03-16-09-00">09:00 - 09:30</button>
-        <button class="slot bg-green-500 hover:bg-green-600 text-white py-2 rounded-lg text-sm font-medium transition" data-slot="2026-03-16-10-00">10:00 - 10:30</button>
+        <button class="slot bg-green-500 hover:bg-green-600 text-white py-2 rounded-lg text-sm font-medium transition" data-slot="2026-03-16-10-00">09:30 - 10:00</button>
+        <button class="slot bg-green-500 hover:bg-green-600 text-white py-2 rounded-lg text-sm font-medium transition" data-slot="2026-03-03-10-00">10:15 - 10:45</button>
         <button class="slot bg-green-500 hover:bg-green-600 text-white py-2 rounded-lg text-sm font-medium transition" data-slot="2026-03-16-10-45">10:45 - 11:15</button>
         <button class="slot bg-green-500 hover:bg-green-600 text-white py-2 rounded-lg text-sm font-medium transition" data-slot="2026-03-16-11-15">11:15 - 11:45</button>
         <button class="slot bg-green-500 hover:bg-green-600 text-white py-2 rounded-lg text-sm font-medium transition" data-slot="2026-03-16-12-00">12:00 - 12:30</button>
@@ -190,7 +192,8 @@
       <h2 class="font-semibold text-[15px] md:text-base text-gray-600 mb-3">Tuesday, 17 Mar 2026</h2>
       <div class="grid grid-cols-2 gap-2">
         <button class="slot bg-green-500 hover:bg-green-600 text-white py-2 rounded-lg text-sm font-medium transition" data-slot="2026-03-17-09-00">09:00 - 09:30</button>
-        <button class="slot bg-green-500 hover:bg-green-600 text-white py-2 rounded-lg text-sm font-medium transition" data-slot="2026-03-17-10-00">10:00 - 10:30</button>
+        <button class="slot bg-green-500 hover:bg-green-600 text-white py-2 rounded-lg text-sm font-medium transition" data-slot="2026-03-17-10-00">09:30 - 10:00</button>
+        <button class="slot bg-green-500 hover:bg-green-600 text-white py-2 rounded-lg text-sm font-medium transition" data-slot="2026-03-03-10-00">10:15 - 10:45</button>
         <button class="slot bg-green-500 hover:bg-green-600 text-white py-2 rounded-lg text-sm font-medium transition" data-slot="2026-03-17-10-45">10:45 - 11:15</button>
         <button class="slot bg-green-500 hover:bg-green-600 text-white py-2 rounded-lg text-sm font-medium transition" data-slot="2026-03-17-11-15">11:15 - 11:45</button>
         <button class="slot bg-green-500 hover:bg-green-600 text-white py-2 rounded-lg text-sm font-medium transition" data-slot="2026-03-17-12-00">12:00 - 12:30</button>
@@ -205,7 +208,8 @@
       <h2 class="font-semibold text-[15px] md:text-base text-gray-600 mb-3">Monday, 23 Mar 2026</h2>
       <div class="grid grid-cols-2 gap-2">
         <button class="slot bg-green-500 hover:bg-green-600 text-white py-2 rounded-lg text-sm font-medium transition" data-slot="2026-03-23-09-00">09:00 - 09:30</button>
-        <button class="slot bg-green-500 hover:bg-green-600 text-white py-2 rounded-lg text-sm font-medium transition" data-slot="2026-03-23-10-00">10:00 - 10:30</button>
+        <button class="slot bg-green-500 hover:bg-green-600 text-white py-2 rounded-lg text-sm font-medium transition" data-slot="2026-03-23-10-00">09:30 - 10:00</button>
+        <button class="slot bg-green-500 hover:bg-green-600 text-white py-2 rounded-lg text-sm font-medium transition" data-slot="2026-03-03-10-00">10:15 - 10:45</button>
         <button class="slot bg-green-500 hover:bg-green-600 text-white py-2 rounded-lg text-sm font-medium transition" data-slot="2026-03-23-10-45">10:45 - 11:15</button>
         <button class="slot bg-green-500 hover:bg-green-600 text-white py-2 rounded-lg text-sm font-medium transition" data-slot="2026-03-23-11-15">11:15 - 11:45</button>
         <button class="slot bg-green-500 hover:bg-green-600 text-white py-2 rounded-lg text-sm font-medium transition" data-slot="2026-03-23-12-00">12:00 - 12:30</button>
@@ -220,7 +224,8 @@
       <h2 class="font-semibold text-[15px] md:text-base text-gray-600 mb-3">Tuesday, 24 Mar 2026</h2>
       <div class="grid grid-cols-2 gap-2">
         <button class="slot bg-green-500 hover:bg-green-600 text-white py-2 rounded-lg text-sm font-medium transition" data-slot="2026-03-24-09-00">09:00 - 09:30</button>
-        <button class="slot bg-green-500 hover:bg-green-600 text-white py-2 rounded-lg text-sm font-medium transition" data-slot="2026-03-24-10-00">10:00 - 10:30</button>
+        <button class="slot bg-green-500 hover:bg-green-600 text-white py-2 rounded-lg text-sm font-medium transition" data-slot="2026-03-24-10-00">09:30 - 10:00</button>
+        <button class="slot bg-green-500 hover:bg-green-600 text-white py-2 rounded-lg text-sm font-medium transition" data-slot="2026-03-03-10-00">10:15 - 10:45</button>
         <button class="slot bg-green-500 hover:bg-green-600 text-white py-2 rounded-lg text-sm font-medium transition" data-slot="2026-03-24-10-45">10:45 - 11:15</button>
         <button class="slot bg-green-500 hover:bg-green-600 text-white py-2 rounded-lg text-sm font-medium transition" data-slot="2026-03-24-11-15">11:15 - 11:45</button>
         <button class="slot bg-green-500 hover:bg-green-600 text-white py-2 rounded-lg text-sm font-medium transition" data-slot="2026-03-24-12-00">12:00 - 12:30</button>
@@ -235,7 +240,8 @@
       <h2 class="font-semibold text-[15px] md:text-base text-gray-600 mb-3">Monday, 30 Mar 2026</h2>
       <div class="grid grid-cols-2 gap-2">
         <button class="slot bg-green-500 hover:bg-green-600 text-white py-2 rounded-lg text-sm font-medium transition" data-slot="2026-03-30-09-00">09:00 - 09:30</button>
-        <button class="slot bg-green-500 hover:bg-green-600 text-white py-2 rounded-lg text-sm font-medium transition" data-slot="2026-03-30-10-00">10:00 - 10:30</button>
+        <button class="slot bg-green-500 hover:bg-green-600 text-white py-2 rounded-lg text-sm font-medium transition" data-slot="2026-03-30-10-00">09:30 - 10:00</button>
+        <button class="slot bg-green-500 hover:bg-green-600 text-white py-2 rounded-lg text-sm font-medium transition" data-slot="2026-03-03-10-00">10:15 - 10:45</button>
         <button class="slot bg-green-500 hover:bg-green-600 text-white py-2 rounded-lg text-sm font-medium transition" data-slot="2026-03-30-10-45">10:45 - 11:15</button>
         <button class="slot bg-green-500 hover:bg-green-600 text-white py-2 rounded-lg text-sm font-medium transition" data-slot="2026-03-30-11-15">11:15 - 11:45</button>
         <button class="slot bg-green-500 hover:bg-green-600 text-white py-2 rounded-lg text-sm font-medium transition" data-slot="2026-03-30-12-00">12:00 - 12:30</button>
@@ -250,7 +256,8 @@
       <h2 class="font-semibold text-[15px] md:text-base text-gray-600 mb-3">Tuesday, 31 Mar 2026</h2>
       <div class="grid grid-cols-2 gap-2">
         <button class="slot bg-green-500 hover:bg-green-600 text-white py-2 rounded-lg text-sm font-medium transition" data-slot="2026-03-31-09-00">09:00 - 09:30</button>
-        <button class="slot bg-green-500 hover:bg-green-600 text-white py-2 rounded-lg text-sm font-medium transition" data-slot="2026-03-31-10-00">10:00 - 10:30</button>
+        <button class="slot bg-green-500 hover:bg-green-600 text-white py-2 rounded-lg text-sm font-medium transition" data-slot="2026-03-31-10-00">09:30 - 10:00</button>
+        <button class="slot bg-green-500 hover:bg-green-600 text-white py-2 rounded-lg text-sm font-medium transition" data-slot="2026-03-03-10-00">10:15 - 10:45</button>
         <button class="slot bg-green-500 hover:bg-green-600 text-white py-2 rounded-lg text-sm font-medium transition" data-slot="2026-03-31-10-45">10:45 - 11:15</button>
         <button class="slot bg-green-500 hover:bg-green-600 text-white py-2 rounded-lg text-sm font-medium transition" data-slot="2026-03-31-11-15">11:15 - 11:45</button>
         <button class="slot bg-green-500 hover:bg-green-600 text-white py-2 rounded-lg text-sm font-medium transition" data-slot="2026-03-31-12-00">12:00 - 12:30</button>
@@ -265,7 +272,8 @@
       <h2 class="font-semibold text-[15px] md:text-base text-gray-600 mb-3">Monday, 6 Apr 2026</h2>
       <div class="grid grid-cols-2 gap-2">
         <button class="slot bg-green-500 hover:bg-green-600 text-white py-2 rounded-lg text-sm font-medium transition" data-slot="2026-04-06-09-00">09:00 - 09:30</button>
-        <button class="slot bg-green-500 hover:bg-green-600 text-white py-2 rounded-lg text-sm font-medium transition" data-slot="2026-04-06-10-00">10:00 - 10:30</button>
+        <button class="slot bg-green-500 hover:bg-green-600 text-white py-2 rounded-lg text-sm font-medium transition" data-slot="2026-04-06-10-00">09:30 - 10:00</button>
+        <button class="slot bg-green-500 hover:bg-green-600 text-white py-2 rounded-lg text-sm font-medium transition" data-slot="2026-03-03-10-00">10:15 - 10:45</button>
         <button class="slot bg-green-500 hover:bg-green-600 text-white py-2 rounded-lg text-sm font-medium transition" data-slot="2026-04-06-10-45">10:45 - 11:15</button>
         <button class="slot bg-green-500 hover:bg-green-600 text-white py-2 rounded-lg text-sm font-medium transition" data-slot="2026-04-06-11-15">11:15 - 11:45</button>
         <button class="slot bg-green-500 hover:bg-green-600 text-white py-2 rounded-lg text-sm font-medium transition" data-slot="2026-04-06-12-00">12:00 - 12:30</button>
@@ -280,7 +288,8 @@
       <h2 class="font-semibold text-[15px] md:text-base text-gray-600 mb-3">Tuesday, 7 Apr 2026</h2>
       <div class="grid grid-cols-2 gap-2">
         <button class="slot bg-green-500 hover:bg-green-600 text-white py-2 rounded-lg text-sm font-medium transition" data-slot="2026-04-07-09-00">09:00 - 09:30</button>
-        <button class="slot bg-green-500 hover:bg-green-600 text-white py-2 rounded-lg text-sm font-medium transition" data-slot="2026-04-07-10-00">10:00 - 10:30</button>
+        <button class="slot bg-green-500 hover:bg-green-600 text-white py-2 rounded-lg text-sm font-medium transition" data-slot="2026-04-07-10-00">09:30 - 10:00</button>
+        <button class="slot bg-green-500 hover:bg-green-600 text-white py-2 rounded-lg text-sm font-medium transition" data-slot="2026-03-03-10-00">10:15 - 10:45</button>
         <button class="slot bg-green-500 hover:bg-green-600 text-white py-2 rounded-lg text-sm font-medium transition" data-slot="2026-04-07-10-45">10:45 - 11:15</button>
         <button class="slot bg-green-500 hover:bg-green-600 text-white py-2 rounded-lg text-sm font-medium transition" data-slot="2026-04-07-11-15">11:15 - 11:45</button>
         <button class="slot bg-green-500 hover:bg-green-600 text-white py-2 rounded-lg text-sm font-medium transition" data-slot="2026-04-07-12-00">12:00 - 12:30</button>
@@ -297,7 +306,8 @@
       <h2 class="font-semibold text-[15px] md:text-base text-gray-600 mb-3">Monday, 27 Apr 2026</h2>
       <div class="grid grid-cols-2 gap-2">
         <button class="slot bg-green-500 hover:bg-green-600 text-white py-2 rounded-lg text-sm font-medium transition" data-slot="2026-04-27-09-00">09:00 - 09:30</button>
-        <button class="slot bg-green-500 hover:bg-green-600 text-white py-2 rounded-lg text-sm font-medium transition" data-slot="2026-04-27-10-00">10:00 - 10:30</button>
+        <button class="slot bg-green-500 hover:bg-green-600 text-white py-2 rounded-lg text-sm font-medium transition" data-slot="2026-04-27-10-00">09:30 - 10:00</button>
+        <button class="slot bg-green-500 hover:bg-green-600 text-white py-2 rounded-lg text-sm font-medium transition" data-slot="2026-03-03-10-00">10:15 - 10:45</button>
         <button class="slot bg-green-500 hover:bg-green-600 text-white py-2 rounded-lg text-sm font-medium transition" data-slot="2026-04-27-10-45">10:45 - 11:15</button>
         <button class="slot bg-green-500 hover:bg-green-600 text-white py-2 rounded-lg text-sm font-medium transition" data-slot="2026-04-27-11-15">11:15 - 11:45</button>
         <button class="slot bg-green-500 hover:bg-green-600 text-white py-2 rounded-lg text-sm font-medium transition" data-slot="2026-04-27-12-00">12:00 - 12:30</button>
@@ -312,7 +322,8 @@
       <h2 class="font-semibold text-[15px] md:text-base text-gray-600 mb-3">Tuesday, 28 Apr 2026</h2>
       <div class="grid grid-cols-2 gap-2">
         <button class="slot bg-green-500 hover:bg-green-600 text-white py-2 rounded-lg text-sm font-medium transition" data-slot="2026-04-28-09-00">09:00 - 09:30</button>
-        <button class="slot bg-green-500 hover:bg-green-600 text-white py-2 rounded-lg text-sm font-medium transition" data-slot="2026-04-28-10-00">10:00 - 10:30</button>
+        <button class="slot bg-green-500 hover:bg-green-600 text-white py-2 rounded-lg text-sm font-medium transition" data-slot="2026-04-28-10-00">09:30 - 10:00</button>
+        <button class="slot bg-green-500 hover:bg-green-600 text-white py-2 rounded-lg text-sm font-medium transition" data-slot="2026-03-03-10-00">10:15 - 10:45</button>
         <button class="slot bg-green-500 hover:bg-green-600 text-white py-2 rounded-lg text-sm font-medium transition" data-slot="2026-04-28-10-45">10:45 - 11:15</button>
         <button class="slot bg-green-500 hover:bg-green-600 text-white py-2 rounded-lg text-sm font-medium transition" data-slot="2026-04-28-11-15">11:15 - 11:45</button>
         <button class="slot bg-green-500 hover:bg-green-600 text-white py-2 rounded-lg text-sm font-medium transition" data-slot="2026-04-28-12-00">12:00 - 12:30</button>
@@ -327,7 +338,8 @@
       <h2 class="font-semibold text-[15px] md:text-base text-gray-600 mb-3">Monday, 4 May 2026</h2>
       <div class="grid grid-cols-2 gap-2">
         <button class="slot bg-green-500 hover:bg-green-600 text-white py-2 rounded-lg text-sm font-medium transition" data-slot="2026-05-04-09-00">09:00 - 09:30</button>
-        <button class="slot bg-green-500 hover:bg-green-600 text-white py-2 rounded-lg text-sm font-medium transition" data-slot="2026-05-04-10-00">10:00 - 10:30</button>
+        <button class="slot bg-green-500 hover:bg-green-600 text-white py-2 rounded-lg text-sm font-medium transition" data-slot="2026-05-04-10-00">09:30 - 10:00</button>
+        <button class="slot bg-green-500 hover:bg-green-600 text-white py-2 rounded-lg text-sm font-medium transition" data-slot="2026-03-03-10-00">10:15 - 10:45</button>
         <button class="slot bg-green-500 hover:bg-green-600 text-white py-2 rounded-lg text-sm font-medium transition" data-slot="2026-05-04-10-45">10:45 - 11:15</button>
         <button class="slot bg-green-500 hover:bg-green-600 text-white py-2 rounded-lg text-sm font-medium transition" data-slot="2026-05-04-11-15">11:15 - 11:45</button>
         <button class="slot bg-green-500 hover:bg-green-600 text-white py-2 rounded-lg text-sm font-medium transition" data-slot="2026-05-04-12-00">12:00 - 12:30</button>
@@ -342,7 +354,8 @@
       <h2 class="font-semibold text-[15px] md:text-base text-gray-600 mb-3">Tuesday, 5 May 2026</h2>
       <div class="grid grid-cols-2 gap-2">
         <button class="slot bg-green-500 hover:bg-green-600 text-white py-2 rounded-lg text-sm font-medium transition" data-slot="2026-05-05-09-00">09:00 - 09:30</button>
-        <button class="slot bg-green-500 hover:bg-green-600 text-white py-2 rounded-lg text-sm font-medium transition" data-slot="2026-05-05-10-00">10:00 - 10:30</button>
+        <button class="slot bg-green-500 hover:bg-green-600 text-white py-2 rounded-lg text-sm font-medium transition" data-slot="2026-05-05-10-00">09:30 - 10:00</button>
+        <button class="slot bg-green-500 hover:bg-green-600 text-white py-2 rounded-lg text-sm font-medium transition" data-slot="2026-03-03-10-00">10:15 - 10:45</button>
         <button class="slot bg-green-500 hover:bg-green-600 text-white py-2 rounded-lg text-sm font-medium transition" data-slot="2026-05-05-10-45">10:45 - 11:15</button>
         <button class="slot bg-green-500 hover:bg-green-600 text-white py-2 rounded-lg text-sm font-medium transition" data-slot="2026-05-05-11-15">11:15 - 11:45</button>
         <button class="slot bg-green-500 hover:bg-green-600 text-white py-2 rounded-lg text-sm font-medium transition" data-slot="2026-05-05-12-00">12:00 - 12:30</button>
@@ -357,7 +370,8 @@
       <h2 class="font-semibold text-[15px] md:text-base text-gray-600 mb-3">Monday, 11 May 2026</h2>
       <div class="grid grid-cols-2 gap-2">
         <button class="slot bg-green-500 hover:bg-green-600 text-white py-2 rounded-lg text-sm font-medium transition" data-slot="2026-05-11-09-00">09:00 - 09:30</button>
-        <button class="slot bg-green-500 hover:bg-green-600 text-white py-2 rounded-lg text-sm font-medium transition" data-slot="2026-05-11-10-00">10:00 - 10:30</button>
+        <button class="slot bg-green-500 hover:bg-green-600 text-white py-2 rounded-lg text-sm font-medium transition" data-slot="2026-05-11-10-00">09:30 - 10:00</button>
+        <button class="slot bg-green-500 hover:bg-green-600 text-white py-2 rounded-lg text-sm font-medium transition" data-slot="2026-03-03-10-00">10:15 - 10:45</button>
         <button class="slot bg-green-500 hover:bg-green-600 text-white py-2 rounded-lg text-sm font-medium transition" data-slot="2026-05-11-10-45">10:45 - 11:15</button>
         <button class="slot bg-green-500 hover:bg-green-600 text-white py-2 rounded-lg text-sm font-medium transition" data-slot="2026-05-11-11-15">11:15 - 11:45</button>
         <button class="slot bg-green-500 hover:bg-green-600 text-white py-2 rounded-lg text-sm font-medium transition" data-slot="2026-05-11-12-00">12:00 - 12:30</button>
@@ -372,7 +386,8 @@
       <h2 class="font-semibold text-[15px] md:text-base text-gray-600 mb-3">Tuesday, 12 May 2026</h2>
       <div class="grid grid-cols-2 gap-2">
         <button class="slot bg-green-500 hover:bg-green-600 text-white py-2 rounded-lg text-sm font-medium transition" data-slot="2026-05-12-09-00">09:00 - 09:30</button>
-        <button class="slot bg-green-500 hover:bg-green-600 text-white py-2 rounded-lg text-sm font-medium transition" data-slot="2026-05-12-10-00">10:00 - 10:30</button>
+        <button class="slot bg-green-500 hover:bg-green-600 text-white py-2 rounded-lg text-sm font-medium transition" data-slot="2026-05-12-10-00">09:30 - 10:00</button>
+        <button class="slot bg-green-500 hover:bg-green-600 text-white py-2 rounded-lg text-sm font-medium transition" data-slot="2026-03-03-10-00">10:15 - 10:45</button>
         <button class="slot bg-green-500 hover:bg-green-600 text-white py-2 rounded-lg text-sm font-medium transition" data-slot="2026-05-12-10-45">10:45 - 11:15</button>
         <button class="slot bg-green-500 hover:bg-green-600 text-white py-2 rounded-lg text-sm font-medium transition" data-slot="2026-05-12-11-15">11:15 - 11:45</button>
         <button class="slot bg-green-500 hover:bg-green-600 text-white py-2 rounded-lg text-sm font-medium transition" data-slot="2026-05-12-12-00">12:00 - 12:30</button>
@@ -387,7 +402,8 @@
       <h2 class="font-semibold text-[15px] md:text-base text-gray-600 mb-3">Monday, 18 May 2026</h2>
       <div class="grid grid-cols-2 gap-2">
         <button class="slot bg-green-500 hover:bg-green-600 text-white py-2 rounded-lg text-sm font-medium transition" data-slot="2026-05-18-09-00">09:00 - 09:30</button>
-        <button class="slot bg-green-500 hover:bg-green-600 text-white py-2 rounded-lg text-sm font-medium transition" data-slot="2026-05-18-10-00">10:00 - 10:30</button>
+        <button class="slot bg-green-500 hover:bg-green-600 text-white py-2 rounded-lg text-sm font-medium transition" data-slot="2026-05-18-10-00">09:30 - 10:00</button>
+        <button class="slot bg-green-500 hover:bg-green-600 text-white py-2 rounded-lg text-sm font-medium transition" data-slot="2026-03-03-10-00">10:15 - 10:45</button>
         <button class="slot bg-green-500 hover:bg-green-600 text-white py-2 rounded-lg text-sm font-medium transition" data-slot="2026-05-18-10-45">10:45 - 11:15</button>
         <button class="slot bg-green-500 hover:bg-green-600 text-white py-2 rounded-lg text-sm font-medium transition" data-slot="2026-05-18-11-15">11:15 - 11:45</button>
         <button class="slot bg-green-500 hover:bg-green-600 text-white py-2 rounded-lg text-sm font-medium transition" data-slot="2026-05-18-12-00">12:00 - 12:30</button>
@@ -402,7 +418,8 @@
       <h2 class="font-semibold text-[15px] md:text-base text-gray-600 mb-3">Tuesday, 19 May 2026</h2>
       <div class="grid grid-cols-2 gap-2">
         <button class="slot bg-green-500 hover:bg-green-600 text-white py-2 rounded-lg text-sm font-medium transition" data-slot="2026-05-19-09-00">09:00 - 09:30</button>
-        <button class="slot bg-green-500 hover:bg-green-600 text-white py-2 rounded-lg text-sm font-medium transition" data-slot="2026-05-19-10-00">10:00 - 10:30</button>
+        <button class="slot bg-green-500 hover:bg-green-600 text-white py-2 rounded-lg text-sm font-medium transition" data-slot="2026-05-19-10-00">09:30 - 10:00</button>
+        <button class="slot bg-green-500 hover:bg-green-600 text-white py-2 rounded-lg text-sm font-medium transition" data-slot="2026-03-03-10-00">10:15 - 10:45</button>
         <button class="slot bg-green-500 hover:bg-green-600 text-white py-2 rounded-lg text-sm font-medium transition" data-slot="2026-05-19-10-45">10:45 - 11:15</button>
         <button class="slot bg-green-500 hover:bg-green-600 text-white py-2 rounded-lg text-sm font-medium transition" data-slot="2026-05-19-11-15">11:15 - 11:45</button>
         <button class="slot bg-green-500 hover:bg-green-600 text-white py-2 rounded-lg text-sm font-medium transition" data-slot="2026-05-19-12-00">12:00 - 12:30</button>
@@ -417,7 +434,8 @@
       <h2 class="font-semibold text-[15px] md:text-base text-gray-600 mb-3">Monday, 25 May 2026</h2>
       <div class="grid grid-cols-2 gap-2">
         <button class="slot bg-green-500 hover:bg-green-600 text-white py-2 rounded-lg text-sm font-medium transition" data-slot="2026-05-25-09-00">09:00 - 09:30</button>
-        <button class="slot bg-green-500 hover:bg-green-600 text-white py-2 rounded-lg text-sm font-medium transition" data-slot="2026-05-25-10-00">10:00 - 10:30</button>
+        <button class="slot bg-green-500 hover:bg-green-600 text-white py-2 rounded-lg text-sm font-medium transition" data-slot="2026-05-25-10-00">09:30 - 10:00</button>
+        <button class="slot bg-green-500 hover:bg-green-600 text-white py-2 rounded-lg text-sm font-medium transition" data-slot="2026-03-03-10-00">10:15 - 10:45</button>
         <button class="slot bg-green-500 hover:bg-green-600 text-white py-2 rounded-lg text-sm font-medium transition" data-slot="2026-05-25-10-45">10:45 - 11:15</button>
         <button class="slot bg-green-500 hover:bg-green-600 text-white py-2 rounded-lg text-sm font-medium transition" data-slot="2026-05-25-11-15">11:15 - 11:45</button>
         <button class="slot bg-green-500 hover:bg-green-600 text-white py-2 rounded-lg text-sm font-medium transition" data-slot="2026-05-25-12-00">12:00 - 12:30</button>
@@ -432,7 +450,8 @@
       <h2 class="font-semibold text-[15px] md:text-base text-gray-600 mb-3">Tuesday, 26 May 2026</h2>
       <div class="grid grid-cols-2 gap-2">
         <button class="slot bg-green-500 hover:bg-green-600 text-white py-2 rounded-lg text-sm font-medium transition" data-slot="2026-05-26-09-00">09:00 - 09:30</button>
-        <button class="slot bg-green-500 hover:bg-green-600 text-white py-2 rounded-lg text-sm font-medium transition" data-slot="2026-05-26-10-00">10:00 - 10:30</button>
+        <button class="slot bg-green-500 hover:bg-green-600 text-white py-2 rounded-lg text-sm font-medium transition" data-slot="2026-05-26-10-00">09:30 - 10:00</button>
+        <button class="slot bg-green-500 hover:bg-green-600 text-white py-2 rounded-lg text-sm font-medium transition" data-slot="2026-03-03-10-00">10:15 - 10:45</button>
         <button class="slot bg-green-500 hover:bg-green-600 text-white py-2 rounded-lg text-sm font-medium transition" data-slot="2026-05-26-10-45">10:45 - 11:15</button>
         <button class="slot bg-green-500 hover:bg-green-600 text-white py-2 rounded-lg text-sm font-medium transition" data-slot="2026-05-26-11-15">11:15 - 11:45</button>
         <button class="slot bg-green-500 hover:bg-green-600 text-white py-2 rounded-lg text-sm font-medium transition" data-slot="2026-05-26-12-00">12:00 - 12:30</button>
@@ -447,7 +466,8 @@
       <h2 class="font-semibold text-[15px] md:text-base text-gray-600 mb-3">Monday, 1 Jun 2026</h2>
       <div class="grid grid-cols-2 gap-2">
         <button class="slot bg-green-500 hover:bg-green-600 text-white py-2 rounded-lg text-sm font-medium transition" data-slot="2026-06-01-09-00">09:00 - 09:30</button>
-        <button class="slot bg-green-500 hover:bg-green-600 text-white py-2 rounded-lg text-sm font-medium transition" data-slot="2026-06-01-10-00">10:00 - 10:30</button>
+        <button class="slot bg-green-500 hover:bg-green-600 text-white py-2 rounded-lg text-sm font-medium transition" data-slot="2026-06-01-10-00">09:30 - 10:00</button>
+        <button class="slot bg-green-500 hover:bg-green-600 text-white py-2 rounded-lg text-sm font-medium transition" data-slot="2026-03-03-10-00">10:15 - 10:45</button>
         <button class="slot bg-green-500 hover:bg-green-600 text-white py-2 rounded-lg text-sm font-medium transition" data-slot="2026-06-01-10-45">10:45 - 11:15</button>
         <button class="slot bg-green-500 hover:bg-green-600 text-white py-2 rounded-lg text-sm font-medium transition" data-slot="2026-06-01-11-15">11:15 - 11:45</button>
         <button class="slot bg-green-500 hover:bg-green-600 text-white py-2 rounded-lg text-sm font-medium transition" data-slot="2026-06-01-12-00">12:00 - 12:30</button>
@@ -462,7 +482,8 @@
       <h2 class="font-semibold text-[15px] md:text-base text-gray-600 mb-3">Tuesday, 2 Jun 2026</h2>
       <div class="grid grid-cols-2 gap-2">
         <button class="slot bg-green-500 hover:bg-green-600 text-white py-2 rounded-lg text-sm font-medium transition" data-slot="2026-06-02-09-00">09:00 - 09:30</button>
-        <button class="slot bg-green-500 hover:bg-green-600 text-white py-2 rounded-lg text-sm font-medium transition" data-slot="2026-06-02-10-00">10:00 - 10:30</button>
+        <button class="slot bg-green-500 hover:bg-green-600 text-white py-2 rounded-lg text-sm font-medium transition" data-slot="2026-06-02-10-00">09:30 - 10:00</button>
+        <button class="slot bg-green-500 hover:bg-green-600 text-white py-2 rounded-lg text-sm font-medium transition" data-slot="2026-03-03-10-00">10:15 - 10:45</button>
         <button class="slot bg-green-500 hover:bg-green-600 text-white py-2 rounded-lg text-sm font-medium transition" data-slot="2026-06-02-10-45">10:45 - 11:15</button>
         <button class="slot bg-green-500 hover:bg-green-600 text-white py-2 rounded-lg text-sm font-medium transition" data-slot="2026-06-02-11-15">11:15 - 11:45</button>
         <button class="slot bg-green-500 hover:bg-green-600 text-white py-2 rounded-lg text-sm font-medium transition" data-slot="2026-06-02-12-00">12:00 - 12:30</button>
@@ -477,7 +498,8 @@
       <h2 class="font-semibold text-[15px] md:text-base text-gray-600 mb-3">Monday, 8 Jun 2026</h2>
       <div class="grid grid-cols-2 gap-2">
         <button class="slot bg-green-500 hover:bg-green-600 text-white py-2 rounded-lg text-sm font-medium transition" data-slot="2026-06-08-09-00">09:00 - 09:30</button>
-        <button class="slot bg-green-500 hover:bg-green-600 text-white py-2 rounded-lg text-sm font-medium transition" data-slot="2026-06-08-10-00">10:00 - 10:30</button>
+        <button class="slot bg-green-500 hover:bg-green-600 text-white py-2 rounded-lg text-sm font-medium transition" data-slot="2026-06-08-10-00">09:30 - 10:00</button>
+        <button class="slot bg-green-500 hover:bg-green-600 text-white py-2 rounded-lg text-sm font-medium transition" data-slot="2026-03-03-10-00">10:15 - 10:45</button>
         <button class="slot bg-green-500 hover:bg-green-600 text-white py-2 rounded-lg text-sm font-medium transition" data-slot="2026-06-08-10-45">10:45 - 11:15</button>
         <button class="slot bg-green-500 hover:bg-green-600 text-white py-2 rounded-lg text-sm font-medium transition" data-slot="2026-06-08-11-15">11:15 - 11:45</button>
         <button class="slot bg-green-500 hover:bg-green-600 text-white py-2 rounded-lg text-sm font-medium transition" data-slot="2026-06-08-12-00">12:00 - 12:30</button>
@@ -492,7 +514,8 @@
       <h2 class="font-semibold text-[15px] md:text-base text-gray-600 mb-3">Tuesday, 9 Jun 2026</h2>
       <div class="grid grid-cols-2 gap-2">
         <button class="slot bg-green-500 hover:bg-green-600 text-white py-2 rounded-lg text-sm font-medium transition" data-slot="2026-06-09-09-00">09:00 - 09:30</button>
-        <button class="slot bg-green-500 hover:bg-green-600 text-white py-2 rounded-lg text-sm font-medium transition" data-slot="2026-06-09-10-00">10:00 - 10:30</button>
+        <button class="slot bg-green-500 hover:bg-green-600 text-white py-2 rounded-lg text-sm font-medium transition" data-slot="2026-06-09-10-00">09:30 - 10:00</button>
+        <button class="slot bg-green-500 hover:bg-green-600 text-white py-2 rounded-lg text-sm font-medium transition" data-slot="2026-03-03-10-00">10:15 - 10:45</button>
         <button class="slot bg-green-500 hover:bg-green-600 text-white py-2 rounded-lg text-sm font-medium transition" data-slot="2026-06-09-10-45">10:45 - 11:15</button>
         <button class="slot bg-green-500 hover:bg-green-600 text-white py-2 rounded-lg text-sm font-medium transition" data-slot="2026-06-09-11-15">11:15 - 11:45</button>
         <button class="slot bg-green-500 hover:bg-green-600 text-white py-2 rounded-lg text-sm font-medium transition" data-slot="2026-06-09-12-00">12:00 - 12:30</button>
@@ -507,7 +530,8 @@
       <h2 class="font-semibold text-[15px] md:text-base text-gray-600 mb-3">Monday, 15 Jun 2026</h2>
       <div class="grid grid-cols-2 gap-2">
         <button class="slot bg-green-500 hover:bg-green-600 text-white py-2 rounded-lg text-sm font-medium transition" data-slot="2026-06-15-09-00">09:00 - 09:30</button>
-        <button class="slot bg-green-500 hover:bg-green-600 text-white py-2 rounded-lg text-sm font-medium transition" data-slot="2026-06-15-10-00">10:00 - 10:30</button>
+        <button class="slot bg-green-500 hover:bg-green-600 text-white py-2 rounded-lg text-sm font-medium transition" data-slot="2026-06-15-10-00">09:30 - 10:00</button>
+        <button class="slot bg-green-500 hover:bg-green-600 text-white py-2 rounded-lg text-sm font-medium transition" data-slot="2026-03-03-10-00">10:15 - 10:45</button>
         <button class="slot bg-green-500 hover:bg-green-600 text-white py-2 rounded-lg text-sm font-medium transition" data-slot="2026-06-15-10-45">10:45 - 11:15</button>
         <button class="slot bg-green-500 hover:bg-green-600 text-white py-2 rounded-lg text-sm font-medium transition" data-slot="2026-06-15-11-15">11:15 - 11:45</button>
         <button class="slot bg-green-500 hover:bg-green-600 text-white py-2 rounded-lg text-sm font-medium transition" data-slot="2026-06-15-12-00">12:00 - 12:30</button>
@@ -522,7 +546,8 @@
       <h2 class="font-semibold text-[15px] md:text-base text-gray-600 mb-3">Tuesday, 16 Jun 2026</h2>
       <div class="grid grid-cols-2 gap-2">
         <button class="slot bg-green-500 hover:bg-green-600 text-white py-2 rounded-lg text-sm font-medium transition" data-slot="2026-06-16-09-00">09:00 - 09:30</button>
-        <button class="slot bg-green-500 hover:bg-green-600 text-white py-2 rounded-lg text-sm font-medium transition" data-slot="2026-06-16-10-00">10:00 - 10:30</button>
+        <button class="slot bg-green-500 hover:bg-green-600 text-white py-2 rounded-lg text-sm font-medium transition" data-slot="2026-06-16-10-00">09:30 - 10:00</button>
+        <button class="slot bg-green-500 hover:bg-green-600 text-white py-2 rounded-lg text-sm font-medium transition" data-slot="2026-03-03-10-00">10:15 - 10:45</button>
         <button class="slot bg-green-500 hover:bg-green-600 text-white py-2 rounded-lg text-sm font-medium transition" data-slot="2026-06-16-10-45">10:45 - 11:15</button>
         <button class="slot bg-green-500 hover:bg-green-600 text-white py-2 rounded-lg text-sm font-medium transition" data-slot="2026-06-16-11-15">11:15 - 11:45</button>
         <button class="slot bg-green-500 hover:bg-green-600 text-white py-2 rounded-lg text-sm font-medium transition" data-slot="2026-06-16-12-00">12:00 - 12:30</button>

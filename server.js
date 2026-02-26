@@ -110,6 +110,7 @@ app.get("/api/bookings", async (req, res) => {
 });
 
 app.post("/api/book", async (req, res) => {
+console.log("HIT /api/book", new Date().toISOString());
   const { slot, name, studentNo, email } = req.body || {};
 
   if (!slot || !name || !studentNo || !email) {

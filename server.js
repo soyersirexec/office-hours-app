@@ -242,7 +242,7 @@ app.post("/api/manage/cancel", async (req, res) => {
   }
 });
 
-// Change by token
+// Change by token (handles one-booking-per-student unique index safely)
 app.post("/api/manage/change", async (req, res) => {
   const token = String((req.body && req.body.token) || "").trim();
   const newSlot = String((req.body && req.body.newSlot) || "").trim();
@@ -276,25 +276,34 @@ app.post("/api/manage/change", async (req, res) => {
       return res.json({ ok: true, oldSlot: current.slot, newSlot });
     }
 
+    // ensure new slot is free
     const taken = await client.query(`SELECT 1 FROM bookings WHERE slot = $1 LIMIT 1`, [newSlot]);
     if (taken.rows.length) {
       await client.query("ROLLBACK");
       return res.status(409).json({ ok: false, error: "slot_taken" });
     }
 
+    // IMPORTANT: delete old booking FIRST so the unique(student_no) index won't block re-insert
+    await client.query(`DELETE FROM bookings WHERE manage_token_hash = $1`, [tokenHash]);
+
+    // insert new booking with same student + token hash
     await client.query(
       `INSERT INTO bookings (slot, name, student_no, email, manage_token_hash)
        VALUES ($1, $2, $3, $4, $5)`,
       [newSlot, current.name, current.student_no, current.email, tokenHash]
     );
 
-    await client.query(`DELETE FROM bookings WHERE slot = $1`, [current.slot]);
-
     await client.query("COMMIT");
     return res.json({ ok: true, oldSlot: current.slot, newSlot });
   } catch (err) {
     await client.query("ROLLBACK");
     console.error("MANAGE CHANGE ERROR:", err);
+
+    // If anything went wrong, client-side should reload; but return a helpful code
+    if (err && err.code === "23505") {
+      return res.status(409).json({ ok: false, error: "conflict" });
+    }
+
     return res.status(500).json({ ok: false, error: "db_error" });
   } finally {
     client.release();

@@ -222,7 +222,14 @@ app.post("/api/book", async (req, res) => {
       return res.status(409).json({ ok: false, error: "Slot already booked" });
     }
 
-    return res.json({ ok: true, manageToken });
+    await sendManageLinkEmail({
+  to: em,
+  name: nm,
+  slot,
+  token: manageToken,
+});
+
+return res.json({ ok: true, manageToken });
   } catch (err) {
     // one booking per student number
     if (err && err.code === "23505") {

@@ -188,6 +188,28 @@ app.get("/api/manage", async (req, res) => {
     console.error("MANAGE GET ERROR:", err);
     return res.status(500).json({ ok: false, error: "db_error" });
   }
+app.post("/api/manage/cancel", async (req, res) => {
+  const token = String((req.body && req.body.token) || "").trim();
+  if (!token) return res.status(400).json({ ok: false, error: "missing_token" });
+
+  try {
+    const tokenHash = crypto.createHash("sha256").update(token).digest("hex");
+
+    const result = await pool.query(
+      `DELETE FROM bookings
+       WHERE manage_token_hash = $1
+       RETURNING slot`,
+      [tokenHash]
+    );
+
+    if (result.rowCount === 0) return res.status(404).json({ ok: false, error: "not_found" });
+
+    return res.json({ ok: true, cancelledSlot: result.rows[0].slot });
+  } catch (err) {
+    console.error("MANAGE CANCEL ERROR:", err);
+    return res.status(500).json({ ok: false, error: "db_error" });
+  }
+});
 });
 
 // Optional: Admin cancel booking (password protected)

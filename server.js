@@ -13,7 +13,12 @@ const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || "CHANGE_ME_IN_RENDER_ENV";
 
 // ---------- Allow-list (CSV of student numbers only) ----------
 const allowedCsvPath = path.join(__dirname, "allowed_students.csv");
-
+function normStudentNo(v) {
+  return String(v || "")
+    .trim()
+    .replace(/\s+/g, "")  // remove spaces inside
+    .toUpperCase();       // case-insensitive match
+}
 function loadAllowedStudentNos() {
   try {
     const raw = fs.readFileSync(allowedCsvPath, "utf8");
@@ -23,7 +28,7 @@ function loadAllowedStudentNos() {
         .map((l) => l.trim())
         .filter(Boolean)
         .filter((l) => l.toLowerCase() !== "student_no" && l.toLowerCase() !== "studentno")
-        .map((l) => l.split(",")[0].trim())
+        .map((l) => normStudentNo(l.split(",")[0]))
     );
   } catch (e) {
     console.error("Allow-list CSV could not be read:", e.message);
@@ -102,7 +107,7 @@ app.post("/api/book", async (req, res) => {
     return res.status(400).json({ ok: false, error: "Missing fields" });
   }
 
-  const sn = String(studentNo).trim();
+  const sn = normStudentNo(studentNo);
   const nm = String(name).trim();
   const em = String(email).trim().toLowerCase();
 
@@ -152,17 +157,18 @@ app.delete("/api/cancel/:slot", async (req, res) => {
   }
 });
 app.get("/api/appointment/:studentNo", async (req, res) => {
-  const sn = String(req.params.studentNo || "").trim();
+  const sn = normStudentNo(req.params.studentNo);
   if (!sn) return res.status(400).json({ ok: false, error: "missing_studentNo" });
 
   try {
     const { rows } = await pool.query(
-      `SELECT slot, name, student_no, email, booked_at
-       FROM bookings
-       WHERE student_no = $1
-       LIMIT 1`,
-      [sn]
-    );
+  `SELECT slot, name, student_no, email, booked_at
+   FROM bookings
+   WHERE UPPER(REGEXP_REPLACE(student_no, '\\s+', '', 'g')) = $1
+   ORDER BY booked_at DESC
+   LIMIT 1`,
+  [sn]
+);
 
     if (!rows.length) return res.status(404).json({ ok: false, error: "not_found" });
     return res.json({ ok: true, booking: rows[0] });

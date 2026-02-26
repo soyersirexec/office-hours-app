@@ -157,7 +157,7 @@ document.addEventListener("DOMContentLoaded", async () => {
         e.preventDefault();
         const profile = {
           name: nameEl.value.trim(),
-          studentNo: snEl.value.trim(),
+          studentNo: snEl.value.trim().replace(/\s+/g, "").toUpperCase(),
           email: emailEl.value.trim().toLowerCase(),
         };
         if (!profile.name || !profile.studentNo || !profile.email) {

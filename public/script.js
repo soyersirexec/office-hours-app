@@ -324,7 +324,6 @@ slot.title = `Booked by: ${maskName(profile.name)}`;
   const data = await resp.json().catch(() => ({}));
 
   if (!resp.ok) {
-    if (data.manageToken) showManageLink(data.manageToken);
     // Not allowed -> retry modal
     if (resp.status === 403 && data?.error === "Not allowed") {
       notify({
@@ -353,6 +352,7 @@ slot.title = `Booked by: ${maskName(profile.name)}`;
 
     if (resp.status === 409 && data?.error === "Slot already booked") {
       disableSlot(slot, true);
+      if (data && data.manageToken) showManageLink(data.manageToken);
       notify({
         type: "warn",
         title: "Slot taken",

@@ -10,12 +10,32 @@
 
 <div class="bg-white rounded-2xl shadow-lg p-6 max-w-md w-full text-center">
   <h1 class="text-xl font-semibold mb-2">Manage Appointment</h1>
-  <p class="text-sm text-gray-500 mb-4">You can cancel your booking below.</p>
+  <p class="text-sm text-gray-500 mb-4">You can cancel or change your booking below.</p>
 
   <div id="info" class="text-sm text-gray-700 mb-4"></div>
 
-  <button
-    id="cancelBtn"
+  <!-- Change section -->
+  <div id="changeWrap" class="hidden text-left mb-4">
+    <label class="block text-sm font-medium text-gray-700 mb-2">Choose a new slot</label>
+
+    <select id="slotSelect"
+      class="w-full border border-gray-300 rounded-lg px-3 py-2 text-sm
+             focus:outline-none focus:ring-2 focus:ring-blue-400">
+      <option value="">Loading available slots...</option>
+    </select>
+
+    <button id="changeBtn"
+      class="mt-3 w-full bg-blue-600 hover:bg-blue-700 text-white py-2 rounded-lg font-medium transition
+             disabled:opacity-60 disabled:cursor-not-allowed">
+      Change Appointment
+    </button>
+
+    <p class="text-xs text-gray-500 mt-2">
+      Only available (green) slots appear here.
+    </p>
+  </div>
+
+  <button id="cancelBtn"
     class="w-full bg-red-500 hover:bg-red-600 text-white py-2 rounded-lg font-medium transition hidden">
     Cancel Appointment
   </button>
@@ -31,6 +51,12 @@ const info = document.getElementById("info");
 const msg = document.getElementById("msg");
 const cancelBtn = document.getElementById("cancelBtn");
 
+const changeWrap = document.getElementById("changeWrap");
+const slotSelect = document.getElementById("slotSelect");
+const changeBtn = document.getElementById("changeBtn");
+
+let currentSlot = null;
+
 if (!token) {
   info.textContent = "Invalid link.";
 } else {
@@ -38,8 +64,11 @@ if (!token) {
 }
 
 async function load() {
-  const resp = await fetch(`/api/manage?token=${encodeURIComponent(token)}`);
-  const data = await resp.json();
+  msg.textContent = "";
+  changeBtn.disabled = true;
+
+  const resp = await fetch(`/api/manage?token=${encodeURIComponent(token)}`, { cache: "no-store" });
+  const data = await resp.json().catch(() => ({}));
 
   if (!data.ok) {
     info.textContent = "Booking not found.";
@@ -47,18 +76,25 @@ async function load() {
   }
 
   const b = data.booking;
+  currentSlot = b.slot;
 
   info.innerHTML = `
-    <div><b>Name:</b> ${b.name}</div>
-    <div><b>Student No:</b> ${b.student_no}</div>
-    <div><b>Slot:</b> ${formatSlot(b.slot)}</div>
+    <div><b>Name:</b> ${escapeHtml(b.name || "")}</div>
+    <div><b>Student No:</b> ${escapeHtml(b.student_no || "")}</div>
+    <div><b>Current Slot:</b> ${escapeHtml(formatSlot(b.slot))}</div>
   `;
 
   cancelBtn.classList.remove("hidden");
+  changeWrap.classList.remove("hidden");
+
+  await loadAvailableSlots();
 }
 
 cancelBtn.onclick = async () => {
+  msg.textContent = "";
   cancelBtn.disabled = true;
+  changeBtn.disabled = true;
+  slotSelect.disabled = true;
 
   const resp = await fetch("/api/manage/cancel", {
     method: "POST",
@@ -66,24 +102,112 @@ cancelBtn.onclick = async () => {
     body: JSON.stringify({ token })
   });
 
-  const data = await resp.json();
+  const data = await resp.json().catch(() => ({}));
 
   if (data.ok) {
     msg.textContent = "Your booking has been cancelled.";
     cancelBtn.classList.add("hidden");
+    changeWrap.classList.add("hidden");
     info.innerHTML = "";
   } else {
     msg.textContent = "Cancel failed.";
     cancelBtn.disabled = false;
+    changeBtn.disabled = false;
+    slotSelect.disabled = false;
   }
 };
+
+changeBtn.onclick = async () => {
+  msg.textContent = "";
+  const newSlot = slotSelect.value;
+
+  if (!newSlot) {
+    msg.textContent = "Please select a new slot.";
+    return;
+  }
+  if (newSlot === currentSlot) {
+    msg.textContent = "That is already your current slot.";
+    return;
+  }
+
+  changeBtn.disabled = true;
+  cancelBtn.disabled = true;
+  slotSelect.disabled = true;
+
+  const resp = await fetch("/api/manage/change", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ token, newSlot })
+  });
+
+  const data = await resp.json().catch(() => ({}));
+
+  if (data.ok) {
+    msg.textContent = "Your appointment has been changed.";
+    await load();
+  } else if (data.error === "slot_taken") {
+    msg.textContent = "That slot was just taken. Please choose another.";
+    await loadAvailableSlots();
+    changeBtn.disabled = false;
+    cancelBtn.disabled = false;
+    slotSelect.disabled = false;
+  } else {
+    msg.textContent = "Change failed.";
+    changeBtn.disabled = false;
+    cancelBtn.disabled = false;
+    slotSelect.disabled = false;
+  }
+};
+
+async function loadAvailableSlots() {
+  slotSelect.innerHTML = `<option value="">Loading available slots...</option>`;
+  slotSelect.disabled = true;
+  changeBtn.disabled = true;
+
+  try {
+    const [bookedResp, allResp] = await Promise.all([
+      fetch("/api/bookings", { cache: "no-store" }),
+      fetch("/api/all-slots", { cache: "no-store" })
+    ]);
+
+    const booked = await bookedResp.json();
+    const allSlots = await allResp.json();
+
+    const available = (Array.isArray(allSlots) ? allSlots : [])
+      .filter((s) => s && s !== currentSlot)
+      .filter((s) => !booked[s]);
+
+    slotSelect.innerHTML =
+      `<option value="">Select a new slot</option>` +
+      available.map((s) => `<option value="${escapeAttr(s)}">${escapeHtml(formatSlot(s))}</option>`).join("");
+
+    slotSelect.disabled = false;
+    changeBtn.disabled = false;
+  } catch (e) {
+    slotSelect.innerHTML = `<option value="">Could not load slots</option>`;
+    slotSelect.disabled = false;
+    changeBtn.disabled = false;
+  }
+}
 
 function formatSlot(slot) {
   if (!slot) return "";
   const parts = slot.split("-");
-  const date = parts.slice(0,3).join("-");
+  const date = parts.slice(0, 3).join("-");
   const time = parts.slice(3).join(":");
   return `${date} ${time}`;
+}
+
+function escapeHtml(s) {
+  return String(s)
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#039;");
+}
+function escapeAttr(s) {
+  return escapeHtml(s).replaceAll("`", "&#096;");
 }
 </script>
 

@@ -195,6 +195,72 @@ app.get("/api/manage", async (req, res) => {
 
 // Cancel by token
 app.post("/api/manage/cancel", async (req, res) => {
+  app.post("/api/manage/change", async (req, res) => {
+  const token = String((req.body && req.body.token) || "").trim();
+  const newSlot = String((req.body && req.body.newSlot) || "").trim();
+
+  if (!token) return res.status(400).json({ ok: false, error: "missing_token" });
+  if (!newSlot) return res.status(400).json({ ok: false, error: "missing_newSlot" });
+
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+
+    const tokenHash = crypto.createHash("sha256").update(token).digest("hex");
+
+    // find current booking
+    const cur = await client.query(
+      `SELECT slot, name, student_no, email
+       FROM bookings
+       WHERE manage_token_hash = $1
+       LIMIT 1`,
+      [tokenHash]
+    );
+    if (!cur.rows.length) {
+      await client.query("ROLLBACK");
+      return res.status(404).json({ ok: false, error: "not_found" });
+    }
+
+    const { slot: oldSlot, name, student_no, email } = cur.rows[0];
+
+    // if same slot, nothing to do
+    if (oldSlot === newSlot) {
+      await client.query("ROLLBACK");
+      return res.json({ ok: true, slot: oldSlot });
+    }
+
+    // ensure new slot is free
+    const taken = await client.query(`SELECT 1 FROM bookings WHERE slot = $1 LIMIT 1`, [newSlot]);
+    if (taken.rows.length) {
+      await client.query("ROLLBACK");
+      return res.status(409).json({ ok: false, error: "slot_taken" });
+    }
+
+    // insert new booking with same student + same token hash, then delete old
+    await client.query(
+      `INSERT INTO bookings (slot, name, student_no, email, manage_token_hash)
+       VALUES ($1, $2, $3, $4, $5)`,
+      [newSlot, name, student_no, email, tokenHash]
+    );
+
+    await client.query(`DELETE FROM bookings WHERE slot = $1`, [oldSlot]);
+
+    await client.query("COMMIT");
+    return res.json({ ok: true, oldSlot, newSlot });
+  } catch (err) {
+    await client.query("ROLLBACK");
+    console.error("MANAGE CHANGE ERROR:", err);
+
+    // one booking per student number / conflict etc.
+    if (err && err.code === "23505") {
+      return res.status(409).json({ ok: false, error: "conflict" });
+    }
+
+    return res.status(500).json({ ok: false, error: "db_error" });
+  } finally {
+    client.release();
+  }
+});
   const token = String((req.body && req.body.token) || "").trim();
   if (!token) return res.status(400).json({ ok: false, error: "missing_token" });
 
@@ -257,6 +323,20 @@ app.get("/api/appointment/:studentNo", async (req, res) => {
 
 // Backward-compatible: old admin page expects /api/slots
 app.get("/api/slots", async (req, res) => {
+  app.get("/api/all-slots", async (req, res) => {
+  try {
+    // derive slots from your bookings table + allowed schedule
+    // simplest safe approach: store master slot list once in code
+    const ALL_SLOTS = [
+      // paste the same list we generated
+    ];
+
+    res.json(ALL_SLOTS);
+  } catch (err) {
+    console.error("ALL SLOTS ERROR:", err);
+    res.status(500).json({ ok: false, error: "server_error" });
+  }
+});
   try {
     const { rows } = await pool.query("SELECT slot, name FROM bookings");
     const out = {};

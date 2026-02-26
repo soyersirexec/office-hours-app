@@ -1,5 +1,98 @@
 let notifyTimer = null;
+function openCheckModal() {
+  return new Promise((resolve) => {
+    const modal = document.getElementById("checkModal");
+    const form = document.getElementById("checkForm");
+    const snEl = document.getElementById("checkStudentNo");
+    const errEl = document.getElementById("checkError");
+    const cancelBtn = document.getElementById("checkCancel");
 
+    if (!modal || !form || !snEl || !cancelBtn) {
+      notify({ type: "error", title: "Setup error", message: "Check modal HTML is missing.", ms: 7000 });
+      return resolve(null);
+    }
+
+    if (errEl) { errEl.classList.add("hidden"); errEl.textContent = ""; }
+    snEl.value = "";
+
+    modal.classList.remove("hidden");
+    snEl.focus();
+
+    function close(val) {
+      modal.classList.add("hidden");
+      form.removeEventListener("submit", onSubmit);
+      cancelBtn.removeEventListener("click", onCancel);
+      resolve(val);
+    }
+
+    function onCancel() { close(null); }
+
+    function onSubmit(e) {
+      e.preventDefault();
+      const sn = snEl.value.trim();
+      if (!sn) {
+        if (errEl) {
+          errEl.textContent = "Please enter your student number.";
+          errEl.classList.remove("hidden");
+        } else {
+          notify({ type: "warn", title: "Missing", message: "Enter your student number.", ms: 4000 });
+        }
+        return;
+      }
+      close(sn);
+    }
+
+    form.addEventListener("submit", onSubmit);
+    cancelBtn.addEventListener("click", onCancel);
+  });
+}
+
+async function checkAppointmentFlow() {
+  const studentNo = await openCheckModal();
+  if (!studentNo) return;
+
+  notify({ type: "info", title: "Checking…", message: "Searching your appointment.", ms: 1200 });
+
+  let resp;
+  try {
+    resp = await fetch(`/api/appointment/${encodeURIComponent(studentNo)}`, { cache: "no-store" });
+  } catch {
+    notify({ type: "error", title: "Connection problem", message: "Cannot reach the server. Try again.", ms: 6000 });
+    return;
+  }
+
+  let data = null;
+  let text = "";
+  try { data = await resp.json(); }
+  catch { text = await resp.text().catch(() => ""); }
+
+  if (!resp.ok) {
+    if (resp.status === 404) {
+      notify({ type: "warn", title: "No appointment found", message: "No booking exists for this student number.", ms: 6000 });
+      return;
+    }
+    notify({
+      type: "error",
+      title: "Check failed",
+      message: (data && (data.error || data.message)) || text || `Error (${resp.status})`,
+      ms: 7000,
+    });
+    return;
+  }
+
+  const b = data?.booking;
+  if (!b) {
+    notify({ type: "error", title: "Check failed", message: "Invalid server response.", ms: 7000 });
+    return;
+  }
+
+  notify({
+    type: "success",
+    title: "Appointment found",
+    message: `Slot: ${b.slot} • Name: ${b.name || ""}`,
+    ms: 0, // stays until dismissed
+  });
+}
 function notify({ type = "info", title = "Notice", message = "", ms = 4000 } = {}) {
   const wrap = document.getElementById("notify");
   const card = document.getElementById("notifyCard");

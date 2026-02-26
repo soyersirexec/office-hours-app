@@ -43,7 +43,9 @@ if (ms && ms > 0) {
   notifyTimer = setTimeout(hide, ms);
 }
 document.addEventListener("DOMContentLoaded", async () => {
-  document.querySelector(".sc-check-btn")?.addEventListener("click", checkAppointmentFlow);
+  document.querySelectorAll(".sc-check-btn").forEach((btn) => {
+  btn.addEventListener("click", checkAppointmentFlow);
+});
   const grid = document.getElementById("daysGrid");
   const prevBtn = document.getElementById("prevBtn");
   const nextBtn = document.getElementById("nextBtn");

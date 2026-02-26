@@ -32,7 +32,7 @@ const mailer =
         secure: false,
         requireTLS: true,
         auth: { user: SMTP_USER, pass: SMTP_PASS },
-        tls: { servername: SMTP_HOST },
+        family: 4, // force IPv4
         connectionTimeout: 10000,
         greetingTimeout: 10000,
         socketTimeout: 15000,

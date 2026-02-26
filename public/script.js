@@ -169,7 +169,17 @@ document.addEventListener("DOMContentLoaded", async () => {
       cancelBtn.addEventListener("click", onCancel);
     });
   }
+  // masking
+  function maskName(full) {
+  if (!full) return "";
 
+  return full
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean)
+    .map(word => word[0].toUpperCase() + "***")
+    .join(" ");
+}
   // ---- Disable past dates ----
   (function disablePastDates() {
     const todayDate = new Date();
@@ -214,10 +224,10 @@ document.addEventListener("DOMContentLoaded", async () => {
     btn.classList.add("booked-slot");
 
     if (booking.name) {
-      btn.title = `Booked by: ${booking.name}`;
-    } else {
-      btn.title = "Booked";
-    }
+  btn.title = `Booked by: ${maskName(booking.name)}`;
+} else {
+  btn.title = "Booked";
+}
   } else {
     btn.classList.remove("booked-slot"); // 🔥 ensure free slots stay clean
     btn.title = "";
@@ -232,7 +242,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   // Block if this specific slot is already booked
   if (serverBooked[slot.dataset.slot]) {
     slot.classList.add("booked-slot");   // 🔒 add only here
-slot.title = `Booked by: ${profile.name}`;
+slot.title = `Booked by: ${maskName(profile.name)}`;
     disableSlot(slot, true);
     notify({
       type: "warn",

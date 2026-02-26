@@ -73,7 +73,7 @@ await pool.query(`
   ON bookings (manage_token_hash)
   WHERE manage_token_hash IS NOT NULL;
 `);
-
+console.log("MANAGE TOKEN:", manageToken);
     // Ensure one booking per student number
     await pool.query(`
       CREATE UNIQUE INDEX IF NOT EXISTS bookings_one_per_student_no
@@ -104,8 +104,13 @@ app.get("/api/bookings", async (req, res) => {
 }
     res.json(out);
   } catch (err) {
-    console.error(err);
-    res.status(500).json({ ok: false, error: "db_error" });
+    console.error("BOOK ERROR:", err);
+return res.status(500).json({
+  ok: false,
+  error: "db_error",
+  code: err.code,
+  detail: err.message
+});
   }
 });
 

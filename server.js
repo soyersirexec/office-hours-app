@@ -8,7 +8,7 @@ const { Pool } = require("pg");
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// ⚠️ Recommended: set ADMIN_PASSWORD in Render env vars instead of hardcoding
+// Recommended: set ADMIN_PASSWORD in Render env vars instead of hardcoding
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || "CHANGE_ME_IN_RENDER_ENV";
 
 // ---------- Allow-list (CSV of student numbers only) ----------
@@ -43,7 +43,7 @@ const pool = new Pool({
   ssl: { rejectUnauthorized: false },
 });
 
-// ---------- DB init (FIXED: includes student_no + email + unique index) ----------
+// ---------- DB init ----------
 (async () => {
   try {
     await pool.query(`
@@ -93,33 +93,6 @@ app.post("/api/book", async (req, res) => {
   const sn = String(studentNo).trim();
   const nm = String(name).trim();
   const em = String(email).trim().toLowerCase();
-
-  // inside slot click
-let profile = await openProfileModal();
-if (!profile) return;
-
-const res = await fetch("/api/book", {
-  method: "POST",
-  headers: { "Content-Type": "application/json" },
-  body: JSON.stringify({
-    slot: slot.dataset.slot,
-    name: profile.name,
-    studentNo: profile.studentNo,
-    email: profile.email
-  })
-});
-
-const data = await res.json().catch(() => ({}));
-
-if (!res.ok) {
-  if (res.status === 403 && data.error === "Not allowed") {
-    clearProfile();
-    // re-open immediately, no extra click needed
-    profile = await openProfileModal({ force: true, errorText: "Student number not found. Please try again." });
-    return;
-  }
-  // handle other errors as you already do (slot taken / already booked)
-}
 
   // ✅ Only check student number
   if (!ALLOWED_STUDENTS.has(sn)) {
@@ -180,7 +153,7 @@ app.get("/api/slots", async (req, res) => {
   }
 });
 
-// ✅ FIXED static serving (don’t block admin.html accidentally)
+// Static files
 app.use(express.static(path.join(__dirname, "public")));
 
 // Self-ping (Render)

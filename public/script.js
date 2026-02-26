@@ -57,90 +57,79 @@ document.addEventListener("DOMContentLoaded", async () => {
     setTimeout(() => toast.classList.add("hidden"), 1800);
   }
 
-  function getStudentKey() {
-    const keyName = "ampas_student_key_v1";
-    let key = localStorage.getItem(keyName);
-    if (key && key.trim()) return key;
+  // --------- Modern profile modal (no prompts) ----------
+  const PROFILE_KEY = "booking_student_profile_v1";
 
-    key = prompt("Enter your Student Number (one-time):");
-    if (!key || !key.trim()) return null;
-
-    key = key.trim();
-    localStorage.setItem(keyName, key);
-    return key;
+  function getSavedProfile() {
+    try {
+      const p = JSON.parse(localStorage.getItem(PROFILE_KEY) || "null");
+      if (p?.name && p?.studentNo && p?.email) return p;
+    } catch {}
+    return null;
   }
-const PROFILE_KEY = "booking_student_profile_v1";
 
-function getSavedProfile() {
-  try {
-    const p = JSON.parse(localStorage.getItem(PROFILE_KEY) || "null");
-    if (p?.name && p?.studentNo && p?.email) return p;
-  } catch {}
-  return null;
-}
+  function saveProfile(p) {
+    localStorage.setItem(PROFILE_KEY, JSON.stringify(p));
+  }
 
-function saveProfile(p) {
-  localStorage.setItem(PROFILE_KEY, JSON.stringify(p));
-}
+  function clearProfile() {
+    localStorage.removeItem(PROFILE_KEY);
+  }
 
-function clearProfile() {
-  localStorage.removeItem(PROFILE_KEY);
-}
+  function openProfileModal({ force = false, errorText = "" } = {}) {
+    return new Promise((resolve) => {
+      const modal = document.getElementById("profileModal");
+      const form = document.getElementById("profileForm");
+      const nameEl = document.getElementById("pfName");
+      const snEl = document.getElementById("pfStudentNo");
+      const emailEl = document.getElementById("pfEmail");
+      const errEl = document.getElementById("pfError");
+      const cancelBtn = document.getElementById("pfCancel");
 
-function openProfileModal({ force = false, errorText = "" } = {}) {
-  return new Promise((resolve) => {
-    const modal = document.getElementById("profileModal");
-    const form = document.getElementById("profileForm");
-    const nameEl = document.getElementById("pfName");
-    const snEl = document.getElementById("pfStudentNo");
-    const emailEl = document.getElementById("pfEmail");
-    const errEl = document.getElementById("pfError");
-    const cancelBtn = document.getElementById("pfCancel");
+      const existing = !force ? getSavedProfile() : null;
+      if (existing) return resolve(existing);
 
-    const existing = !force ? getSavedProfile() : null;
-    if (existing) return resolve(existing);
+      errEl.classList.toggle("hidden", !errorText);
+      errEl.textContent = errorText || "";
+      nameEl.value = "";
+      snEl.value = "";
+      emailEl.value = "";
 
-    // reset + show
-    errEl.classList.toggle("hidden", !errorText);
-    errEl.textContent = errorText || "";
-    nameEl.value = "";
-    snEl.value = "";
-    emailEl.value = "";
+      modal.classList.remove("hidden");
+      nameEl.focus();
 
-    modal.classList.remove("hidden");
-    nameEl.focus();
-
-    function close(val) {
-      modal.classList.add("hidden");
-      form.removeEventListener("submit", onSubmit);
-      cancelBtn.removeEventListener("click", onCancel);
-      resolve(val);
-    }
-
-    function onCancel() {
-      close(null);
-    }
-
-    function onSubmit(e) {
-      e.preventDefault();
-      const profile = {
-        name: nameEl.value.trim(),
-        studentNo: snEl.value.trim(),
-        email: emailEl.value.trim().toLowerCase(),
-      };
-      if (!profile.name || !profile.studentNo || !profile.email) {
-        errEl.textContent = "Please fill all fields.";
-        errEl.classList.remove("hidden");
-        return;
+      function close(val) {
+        modal.classList.add("hidden");
+        form.removeEventListener("submit", onSubmit);
+        cancelBtn.removeEventListener("click", onCancel);
+        resolve(val);
       }
-      saveProfile(profile);
-      close(profile);
-    }
 
-    form.addEventListener("submit", onSubmit);
-    cancelBtn.addEventListener("click", onCancel);
-  });
-}
+      function onCancel() {
+        close(null);
+      }
+
+      function onSubmit(e) {
+        e.preventDefault();
+        const profile = {
+          name: nameEl.value.trim(),
+          studentNo: snEl.value.trim(),
+          email: emailEl.value.trim().toLowerCase(),
+        };
+        if (!profile.name || !profile.studentNo || !profile.email) {
+          errEl.textContent = "Please fill all fields.";
+          errEl.classList.remove("hidden");
+          return;
+        }
+        saveProfile(profile);
+        close(profile);
+      }
+
+      form.addEventListener("submit", onSubmit);
+      cancelBtn.addEventListener("click", onCancel);
+    });
+  }
+
   // ---- Disable past dates ----
   (function disablePastDates() {
     const todayDate = new Date();
@@ -166,9 +155,9 @@ function openProfileModal({ force = false, errorText = "" } = {}) {
 
   async function loadBookedFromServer() {
     try {
-      const res = await fetch("/api/bookings", { cache: "no-store" });
-      if (!res.ok) return {};
-      return await res.json();
+      const resp = await fetch("/api/bookings", { cache: "no-store" });
+      if (!resp.ok) return {};
+      return await resp.json();
     } catch {
       return {};
     }
@@ -182,44 +171,62 @@ function openProfileModal({ force = false, errorText = "" } = {}) {
     if (serverBooked[btn.dataset.slot]) disableSlot(btn, true);
   });
 
-  // ---- Click booking (DB enforces "one booking per student") ----
+  // ---- Click booking ----
   document.querySelectorAll(".slot[data-slot]").forEach((slot) => {
     slot.addEventListener("click", async () => {
       if (slot.disabled) return;
 
-      const studentKey = getStudentKey();
-      if (!studentKey) return;
-
+      // If already booked on server, block
       if (serverBooked[slot.dataset.slot]) {
         disableSlot(slot, true);
         showToastNear(slot, "Already booked");
         return;
       }
 
-      let res;
+      // ✅ Use modal (no prompt)
+      let profile = await openProfileModal();
+      if (!profile) return;
+
+      let resp;
       try {
-        res = await fetch("/api/book", {
+        resp = await fetch("/api/book", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ slot: slot.dataset.slot, studentKey })
+          body: JSON.stringify({
+            slot: slot.dataset.slot,
+            name: profile.name,
+            studentNo: profile.studentNo,
+            email: profile.email,
+          }),
         });
       } catch {
         showToastNear(slot, "Network error");
         return;
       }
 
-      if (!res.ok) {
+      const data = await resp.json().catch(() => ({}));
+
+      if (!resp.ok) {
+        // ✅ invalid student number -> allow retry immediately
+        if (resp.status === 403 && data.error === "Not allowed") {
+          clearProfile();
+          await openProfileModal({
+            force: true,
+            errorText: "Student number not found. Please try again.",
+          });
+          return;
+        }
+
         let msg = "Cannot book";
-        try {
-          const j = await res.json();
-          if (j && j.error === "You already booked once") msg = "You already booked once";
-          else if (j && (j.error === "Slot already booked" || j.error === "Already booked")) msg = "Slot already booked";
-        } catch {}
+        if (resp.status === 409 && data.error === "Already booked once") msg = "You already booked once";
+        else if (resp.status === 409 && data.error === "Slot already booked") msg = "Slot already booked";
+        else if (resp.status === 400 && data.error === "Missing fields") msg = "Missing fields";
+
         showToastNear(slot, msg);
         return;
       }
 
-      serverBooked[slot.dataset.slot] = { bookedAt: Date.now() };
+      serverBooked[slot.dataset.slot] = { bookedAt: Date.now(), name: profile.name };
       disableSlot(slot, true);
       showToastNear(slot, "Booked");
     });
@@ -227,7 +234,7 @@ function openProfileModal({ force = false, errorText = "" } = {}) {
 
   // ---- Pagination by day cards (no week grouping) ----
   const dayCards = Array.from(grid.querySelectorAll(".day-card"));
-  const perPage = 6; // change if you want (4, 8, 10...)
+  const perPage = 6;
   let page = 1;
   const totalPages = Math.max(1, Math.ceil(dayCards.length / perPage));
 

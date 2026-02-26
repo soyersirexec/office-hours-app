@@ -5,6 +5,72 @@ const path = require("path");
 const express = require("express");
 const { Pool } = require("pg");
 const crypto = require("crypto");
+// ===== Outlook (Microsoft 365) email sending via SMTP =====
+// 1) Install: npm i nodemailer
+// 2) Set Render env vars:
+//    SMTP_HOST=smtp.office365.com
+//    SMTP_PORT=587
+//    SMTP_USER=your_outlook_email@domain.com
+//    SMTP_PASS=your_outlook_app_password_or_password (prefer app password if available)
+//    FROM_EMAIL=your_outlook_email@domain.com
+//    PUBLIC_BASE_URL=https://YOUR-RENDER-URL.onrender.com
+
+const nodemailer = require("nodemailer");
+
+const SMTP_HOST = process.env.SMTP_HOST || "smtp.office365.com";
+const SMTP_PORT = Number(process.env.SMTP_PORT || 587);
+const SMTP_USER = process.env.SMTP_USER;
+const SMTP_PASS = process.env.SMTP_PASS;
+const FROM_EMAIL = process.env.FROM_EMAIL || SMTP_USER;
+const PUBLIC_BASE_URL = process.env.PUBLIC_BASE_URL;
+
+const mailer =
+  SMTP_USER && SMTP_PASS
+    ? nodemailer.createTransport({
+        host: SMTP_HOST,
+        port: SMTP_PORT,
+        secure: false,
+        auth: { user: SMTP_USER, pass: SMTP_PASS },
+      })
+    : null;
+
+async function sendManageLinkEmail({ to, name, slot, token }) {
+  if (!mailer) return;
+
+  const manageUrl = `${PUBLIC_BASE_URL}/manage.html?token=${encodeURIComponent(token)}`;
+
+  const subject = "Speaking Center Appointment – Manage Link";
+  const text =
+    `Hello${name ? " " + name : ""},\n\n` +
+    `Your appointment has been booked.\n\n` +
+    `Slot: ${slot}\n\n` +
+    `Manage (cancel/change): ${manageUrl}\n\n` +
+    `If you did not make this booking, please ignore this email.\n`;
+
+  const html =
+    `<p>Hello${name ? " " + escapeHtml(name) : ""},</p>` +
+    `<p>Your appointment has been booked.</p>` +
+    `<p><b>Slot:</b> ${escapeHtml(slot)}</p>` +
+    `<p><b>Manage (cancel/change):</b> <a href="${manageUrl}">${manageUrl}</a></p>` +
+    `<p>If you did not make this booking, please ignore this email.</p>`;
+
+  await mailer.sendMail({
+    from: FROM_EMAIL,
+    to,
+    subject,
+    text,
+    html,
+  });
+}
+
+function escapeHtml(s) {
+  return String(s || "")
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#039;");
+}
 
 const app = express();
 const PORT = process.env.PORT || 3000;

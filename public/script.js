@@ -207,18 +207,20 @@ document.addEventListener("DOMContentLoaded", async () => {
 
   // Apply server bookings (disable ONLY the booked slot)
   document.querySelectorAll(".slot[data-slot]").forEach((btn) => {
-  if (btn.disabled) return;
-
   const booking = serverBooked[btn.dataset.slot];
+
   if (booking) {
     disableSlot(btn, true);
+    btn.classList.add("booked-slot");
 
-    // Show student name on hover
     if (booking.name) {
       btn.title = `Booked by: ${booking.name}`;
     } else {
       btn.title = "Booked";
     }
+  } else {
+    btn.classList.remove("booked-slot"); // 🔥 ensure free slots stay clean
+    btn.title = "";
   }
 });
 
@@ -229,6 +231,8 @@ document.addEventListener("DOMContentLoaded", async () => {
 
   // Block if this specific slot is already booked
   if (serverBooked[slot.dataset.slot]) {
+    slot.classList.add("booked-slot");   // 🔒 add only here
+slot.title = `Booked by: ${profile.name}`;
     disableSlot(slot, true);
     notify({
       type: "warn",
@@ -335,7 +339,6 @@ document.addEventListener("DOMContentLoaded", async () => {
     ms: 5000,
   });
 });
-slot.classList.add("booked-slot");
 });
 
   // ---- Pagination by day cards (no week grouping) ----

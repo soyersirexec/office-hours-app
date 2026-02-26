@@ -1,41 +1,76 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
   <title>Admin Panel</title>
   <style>
-    table { border-collapse: collapse; width: 50%; }
-    th, td { border: 1px solid #333; padding: 8px; text-align: left; }
+    body { font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; padding: 16px; }
+    table { border-collapse: collapse; width: 100%; max-width: 1100px; }
+    th, td { border: 1px solid #333; padding: 8px; text-align: left; vertical-align: top; }
     th { background-color: #eee; }
-    button { padding: 4px 8px; cursor: pointer; }
+    button { padding: 6px 10px; cursor: pointer; }
+    .muted { opacity: 0.75; font-size: 12px; }
   </style>
 </head>
 <body>
   <h1>Admin Panel</h1>
+
   <table id="slotsTable">
-    <tr><th>Slot</th><th>Name</th><th>Action</th></tr>
+    <tr>
+      <th>Slot</th>
+      <th>Name</th>
+      <th>Student No</th>
+      <th>Email</th>
+      <th>Booked At</th>
+      <th>Action</th>
+    </tr>
   </table>
 
   <script>
-    const ADMIN_PASSWORD = "Www1903121912-"; // replace with your password
+    const ADMIN_PASSWORD = "Www1903121912-"; // ⚠️ better: don’t hardcode; but leaving as-is per your file
+
+    function fmtDate(v) {
+      try {
+        return v ? new Date(v).toLocaleString() : "";
+      } catch {
+        return "";
+      }
+    }
 
     async function loadSlots() {
       try {
-        const res = await fetch("/api/slots");
+        const res = await fetch("/api/bookings", { cache: "no-store" });
+        if (!res.ok) throw new Error("HTTP " + res.status);
+
         const bookings = await res.json();
         const table = document.getElementById("slotsTable");
 
         // Clear previous rows except header
         table.querySelectorAll("tr:not(:first-child)").forEach(tr => tr.remove());
 
-        for (const slot in bookings) {
+        // Sort slots (optional but nicer)
+        const slots = Object.keys(bookings).sort();
+
+        for (const slot of slots) {
+          const b = bookings[slot] || {};
+
           const row = document.createElement("tr");
 
           const slotCell = document.createElement("td");
           slotCell.textContent = slot;
 
           const nameCell = document.createElement("td");
-          nameCell.textContent = bookings[slot];
+          nameCell.textContent = b.name || "";
+
+          const studentCell = document.createElement("td");
+          studentCell.textContent = b.studentNo || "";
+
+          const emailCell = document.createElement("td");
+          emailCell.textContent = b.email || "";
+
+          const bookedAtCell = document.createElement("td");
+          bookedAtCell.innerHTML = `<span class="muted">${fmtDate(b.bookedAt)}</span>`;
 
           const actionCell = document.createElement("td");
           const btn = document.createElement("button");
@@ -45,7 +80,11 @@
 
           row.appendChild(slotCell);
           row.appendChild(nameCell);
+          row.appendChild(studentCell);
+          row.appendChild(emailCell);
+          row.appendChild(bookedAtCell);
           row.appendChild(actionCell);
+
           table.appendChild(row);
         }
       } catch (err) {
@@ -55,15 +94,15 @@
 
     async function cancelSlot(slot) {
       try {
-        const res = await fetch(`/api/cancel/${slot}?pw=${encodeURIComponent(ADMIN_PASSWORD)}`, {
+        const res = await fetch(`/api/cancel/${encodeURIComponent(slot)}?pw=${encodeURIComponent(ADMIN_PASSWORD)}`, {
           method: "DELETE"
         });
-        const data = await res.json();
+        const data = await res.json().catch(() => ({}));
         if (res.ok) {
-          alert(data.message);
+          alert(data.message || "Booking cancelled");
           loadSlots();
         } else {
-          alert("Error: " + data.message);
+          alert("Error: " + (data.message || ("HTTP " + res.status)));
         }
       } catch (err) {
         alert("Error: " + err.message);

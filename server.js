@@ -78,9 +78,16 @@ const pool = new Pool({
 // Frontend uses this to mark booked slots on load
 app.get("/api/bookings", async (req, res) => {
   try {
-    const { rows } = await pool.query("SELECT slot, booked_at, name FROM bookings");
+    const { rows } = await pool.query("SELECT slot, booked_at, name, student_no, email FROM bookings");
     const out = {};
-    for (const r of rows) out[r.slot] = { bookedAt: r.booked_at, name: r.name || null };
+    for (const r of rows) {
+  out[r.slot] = {
+    bookedAt: r.booked_at,
+    name: r.name || null,
+    studentNo: r.student_no || null,
+    email: r.email || null,
+  };
+}
     res.json(out);
   } catch (err) {
     console.error(err);

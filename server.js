@@ -167,27 +167,6 @@ app.post("/api/book", async (req, res) => {
 
 // Manage lookup by token (used for manage.html later)
 app.get("/api/manage", async (req, res) => {
-  const token = String(req.query.token || "").trim();
-  if (!token) return res.status(400).json({ ok: false, error: "missing_token" });
-
-  try {
-    const tokenHash = crypto.createHash("sha256").update(token).digest("hex");
-
-    const { rows } = await pool.query(
-      `SELECT slot, name, student_no, email, booked_at
-       FROM bookings
-       WHERE manage_token_hash = $1
-       LIMIT 1`,
-      [tokenHash]
-    );
-
-    if (!rows.length) return res.status(404).json({ ok: false, error: "not_found" });
-
-    return res.json({ ok: true, booking: rows[0] });
-  } catch (err) {
-    console.error("MANAGE GET ERROR:", err);
-    return res.status(500).json({ ok: false, error: "db_error" });
-  }
 app.post("/api/manage/cancel", async (req, res) => {
   const token = String((req.body && req.body.token) || "").trim();
   if (!token) return res.status(400).json({ ok: false, error: "missing_token" });
@@ -210,6 +189,28 @@ app.post("/api/manage/cancel", async (req, res) => {
     return res.status(500).json({ ok: false, error: "db_error" });
   }
 });
+  const token = String(req.query.token || "").trim();
+  if (!token) return res.status(400).json({ ok: false, error: "missing_token" });
+
+  try {
+    const tokenHash = crypto.createHash("sha256").update(token).digest("hex");
+
+    const { rows } = await pool.query(
+      `SELECT slot, name, student_no, email, booked_at
+       FROM bookings
+       WHERE manage_token_hash = $1
+       LIMIT 1`,
+      [tokenHash]
+    );
+
+    if (!rows.length) return res.status(404).json({ ok: false, error: "not_found" });
+
+    return res.json({ ok: true, booking: rows[0] });
+  } catch (err) {
+    console.error("MANAGE GET ERROR:", err);
+    return res.status(500).json({ ok: false, error: "db_error" });
+  }
+  
 });
 
 // Optional: Admin cancel booking (password protected)

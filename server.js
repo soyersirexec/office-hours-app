@@ -5,75 +5,74 @@ const path = require("path");
 const express = require("express");
 const { Pool } = require("pg");
 const crypto = require("crypto");
-// ===== Outlook (Microsoft 365) email sending via SMTP =====
-// 1) Install: npm i nodemailer
-// 2) Set Render env vars:
-//    SMTP_HOST=smtp.office365.com
-//    SMTP_PORT=587
-//    SMTP_USER=your_outlook_email@domain.com
-//    SMTP_PASS=your_outlook_app_password_or_password (prefer app password if available)
-//    FROM_EMAIL=your_outlook_email@domain.com
-//    PUBLIC_BASE_URL=https://YOUR-RENDER-URL.onrender.com
 
-const nodemailer = require("nodemailer");
+const app = express();
+const PORT = process.env.PORT || 3000;
 
-const SMTP_HOST = process.env.SMTP_HOST || "smtp.office365.com";
-const SMTP_PORT = Number(process.env.SMTP_PORT || 587);
-const SMTP_USER = process.env.SMTP_USER;
-const SMTP_PASS = process.env.SMTP_PASS;
-const FROM_EMAIL = process.env.FROM_EMAIL || SMTP_USER;
+// Recommended: set ADMIN_PASSWORD in Render env vars instead of hardcoding
+const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || "CHANGE_ME_IN_RENDER_ENV";
+
+// ===== Resend email (no SMTP) =====
+// Render env vars you must set:
+//   RESEND_API_KEY=your_resend_api_key
+//   RESEND_FROM="Speaking Center <no-reply@yourdomain.com>"   (must be a verified sender in Resend)
+//   PUBLIC_BASE_URL=https://YOUR-RENDER-URL.onrender.com
+const RESEND_API_KEY = process.env.RESEND_API_KEY;
+const RESEND_FROM = process.env.RESEND_FROM;
 const PUBLIC_BASE_URL = process.env.PUBLIC_BASE_URL;
 
-const mailer =
-  SMTP_USER && SMTP_PASS
-    ? nodemailer.createTransport({
-        host: SMTP_HOST,
-        port: SMTP_PORT,
-        secure: false,
-        requireTLS: true,
-        auth: { user: SMTP_USER, pass: SMTP_PASS },
-        family: 4, // force IPv4
-        connectionTimeout: 10000,
-        greetingTimeout: 10000,
-        socketTimeout: 15000,
-      })
-    : null;
-
-if (!mailer) {
-  console.log("EMAIL: disabled (missing SMTP_USER/SMTP_PASS env vars)");
-} else {
-  mailer
-    .verify()
-    .then(() => console.log("EMAIL: SMTP verified OK"))
-    .catch((e) => console.error("EMAIL: SMTP verify FAILED:", e));
-}
-
 async function sendManageLinkEmail({ to, name, slot, token }) {
-  if (!mailer) return;
+  if (!RESEND_API_KEY || !RESEND_FROM) {
+    console.log("EMAIL: disabled (missing RESEND_API_KEY or RESEND_FROM)");
+    return;
+  }
   if (!PUBLIC_BASE_URL) {
     console.log("EMAIL: skipped (missing PUBLIC_BASE_URL env var)");
     return;
   }
+  if (!to) return;
 
   const manageUrl = `${PUBLIC_BASE_URL}/manage.html?token=${encodeURIComponent(token)}`;
 
-  await mailer.sendMail({
-    from: FROM_EMAIL,
-    to,
-    subject: "Speaking Center Appointment – Manage Link",
-    text:
-      `Hello${name ? " " + name : ""},\n\n` +
-      `Your appointment has been booked.\n\n` +
-      `Slot: ${slot}\n\n` +
-      `Manage (cancel/change): ${manageUrl}\n\n`,
-    html:
-      `<p>Hello${name ? " " + escapeHtml(name) : ""},</p>` +
-      `<p>Your appointment has been booked.</p>` +
-      `<p><b>Slot:</b> ${escapeHtml(slot)}</p>` +
-      `<p><b>Manage (cancel/change):</b> <a href="${manageUrl}">${manageUrl}</a></p>`,
-  });
+  const subject = "Speaking Center Appointment – Manage Link";
+  const text =
+    `Hello${name ? " " + name : ""},\n\n` +
+    `Your appointment has been booked.\n\n` +
+    `Slot: ${slot}\n\n` +
+    `Manage (cancel/change): ${manageUrl}\n\n`;
 
-  console.log("EMAIL: sent to", to);
+  const html =
+    `<p>Hello${name ? " " + escapeHtml(name) : ""},</p>` +
+    `<p>Your appointment has been booked.</p>` +
+    `<p><b>Slot:</b> ${escapeHtml(slot)}</p>` +
+    `<p><b>Manage (cancel/change):</b> <a href="${manageUrl}">${manageUrl}</a></p>`;
+
+  try {
+    const resp = await fetch("https://api.resend.com/emails", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${RESEND_API_KEY}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        from: RESEND_FROM,
+        to: [to],
+        subject,
+        html,
+        text,
+      }),
+    });
+
+    if (!resp.ok) {
+      const body = await resp.text().catch(() => "");
+      console.error("EMAIL: Resend failed", resp.status, body);
+      return;
+    }
+
+    console.log("EMAIL: sent to", to);
+  } catch (e) {
+    console.error("EMAIL: Resend error:", e);
+  }
 }
 
 function escapeHtml(s) {
@@ -84,12 +83,6 @@ function escapeHtml(s) {
     .replaceAll('"', "&quot;")
     .replaceAll("'", "&#039;");
 }
-
-const app = express();
-const PORT = process.env.PORT || 3000;
-
-// Recommended: set ADMIN_PASSWORD in Render env vars instead of hardcoding
-const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || "CHANGE_ME_IN_RENDER_ENV";
 
 // ---------- Allow-list (CSV of student numbers only) ----------
 const allowedCsvPath = path.join(__dirname, "allowed_students.csv");
@@ -142,7 +135,6 @@ const pool = new Pool({
 // ---------- DB init (create + upgrade safely) ----------
 (async () => {
   try {
-    // Create table if missing (basic structure)
     await pool.query(`
       CREATE TABLE IF NOT EXISTS bookings (
         slot TEXT PRIMARY KEY,
@@ -151,7 +143,6 @@ const pool = new Pool({
       );
     `);
 
-    // Add new columns if they don't exist (safe for existing DB)
     await pool.query(`ALTER TABLE bookings ADD COLUMN IF NOT EXISTS student_no TEXT;`);
     await pool.query(`ALTER TABLE bookings ADD COLUMN IF NOT EXISTS email TEXT;`);
     await pool.query(`ALTER TABLE bookings ADD COLUMN IF NOT EXISTS manage_token_hash TEXT;`);
@@ -165,7 +156,6 @@ const pool = new Pool({
       WHERE manage_token_hash IS NOT NULL;
     `);
 
-    // Ensure one booking per student number
     await pool.query(`
       CREATE UNIQUE INDEX IF NOT EXISTS bookings_one_per_student_no
       ON bookings (student_no)
@@ -196,7 +186,6 @@ app.get("/api/bookings", async (req, res) => {
     return res.json(out);
   } catch (err) {
     console.error("BOOKINGS GET ERROR:", err);
-    // IMPORTANT: return {} so the frontend doesn't break and wipe UI due to unexpected shape
     return res.json({});
   }
 });
@@ -212,13 +201,11 @@ app.post("/api/book", async (req, res) => {
   const nm = String(name).trim();
   const em = String(email).trim().toLowerCase();
 
-  // ✅ Only check student number
   if (!ALLOWED_STUDENTS.has(sn)) {
     return res.status(403).json({ ok: false, error: "Not allowed" });
   }
 
   try {
-    // Create manage token (store only hash in DB)
     const manageToken = crypto.randomBytes(32).toString("hex");
     const manageTokenHash = crypto.createHash("sha256").update(manageToken).digest("hex");
 
@@ -235,20 +222,16 @@ app.post("/api/book", async (req, res) => {
       return res.status(409).json({ ok: false, error: "Slot already booked" });
     }
 
-    sendManageLinkEmail({
-  to: em,
-  name: nm,
-  slot,
-  token: manageToken,
-}).catch((e) => console.error("EMAIL SEND ERROR:", e));
+    // fire-and-forget email (so UI response isn't delayed)
+    sendManageLinkEmail({ to: em, name: nm, slot, token: manageToken }).catch((e) =>
+      console.error("EMAIL SEND ERROR:", e)
+    );
 
-return res.json({ ok: true, manageToken });
+    return res.json({ ok: true, manageToken });
   } catch (err) {
-    // one booking per student number
     if (err && err.code === "23505") {
       return res.status(409).json({ ok: false, error: "Already booked once" });
     }
-
     console.error("BOOK ERROR:", err);
     return res.status(500).json({ ok: false, error: "db_error" });
   }
@@ -275,31 +258,6 @@ app.get("/api/manage", async (req, res) => {
     return res.json({ ok: true, booking: rows[0] });
   } catch (err) {
     console.error("MANAGE GET ERROR:", err);
-    return res.status(500).json({ ok: false, error: "db_error" });
-  }
-});
-
-// Cancel by token
-// Cancel by token
-app.post("/api/manage/cancel", async (req, res) => {
-  const token = String((req.body && req.body.token) || "").trim();
-  if (!token) return res.status(400).json({ ok: false, error: "missing_token" });
-
-  try {
-    const tokenHash = crypto.createHash("sha256").update(token).digest("hex");
-
-    const result = await pool.query(
-      `DELETE FROM bookings
-       WHERE manage_token_hash = $1
-       RETURNING slot`,
-      [tokenHash]
-    );
-
-    if (result.rowCount === 0) return res.status(404).json({ ok: false, error: "not_found" });
-
-    return res.json({ ok: true, cancelledSlot: result.rows[0].slot });
-  } catch (err) {
-    console.error("MANAGE CANCEL ERROR:", err);
     return res.status(500).json({ ok: false, error: "db_error" });
   }
 });
@@ -362,17 +320,14 @@ app.post("/api/manage/change", async (req, res) => {
       return res.json({ ok: true, oldSlot: current.slot, newSlot });
     }
 
-    // ensure new slot is free
     const taken = await client.query(`SELECT 1 FROM bookings WHERE slot = $1 LIMIT 1`, [newSlot]);
     if (taken.rows.length) {
       await client.query("ROLLBACK");
       return res.status(409).json({ ok: false, error: "slot_taken" });
     }
 
-    // IMPORTANT: delete old booking FIRST so the unique(student_no) index won't block re-insert
     await client.query(`DELETE FROM bookings WHERE manage_token_hash = $1`, [tokenHash]);
 
-    // insert new booking with same student + token hash
     await client.query(
       `INSERT INTO bookings (slot, name, student_no, email, manage_token_hash)
        VALUES ($1, $2, $3, $4, $5)`,
@@ -385,7 +340,6 @@ app.post("/api/manage/change", async (req, res) => {
     await client.query("ROLLBACK");
     console.error("MANAGE CHANGE ERROR:", err);
 
-    // If anything went wrong, client-side should reload; but return a helpful code
     if (err && err.code === "23505") {
       return res.status(409).json({ ok: false, error: "conflict" });
     }
@@ -395,6 +349,7 @@ app.post("/api/manage/change", async (req, res) => {
     client.release();
   }
 });
+
 // Optional: Admin cancel booking (password protected)
 app.delete("/api/cancel/:slot", async (req, res) => {
   const pw = req.query.pw;
@@ -435,35 +390,19 @@ app.get("/api/appointment/:studentNo", async (req, res) => {
 
 // Backward-compatible: old admin page expects /api/slots
 app.get("/api/slots", async (req, res) => {
-  app.get("/api/all-slots", async (req, res) => {
-  try {
-    // derive slots from your bookings table + allowed schedule
-    // simplest safe approach: store master slot list once in code
-    const ALL_SLOTS = [
-      // paste the same list we generated
-    ];
-
-    res.json(ALL_SLOTS);
-  } catch (err) {
-    console.error("ALL SLOTS ERROR:", err);
-    res.status(500).json({ ok: false, error: "server_error" });
-  }
-});
   try {
     const { rows } = await pool.query("SELECT slot, name FROM bookings");
     const out = {};
     for (const r of rows) out[r.slot] = r.name || null;
-    res.json(out);
+    return res.json(out);
   } catch (err) {
     console.error("SLOTS GET ERROR:", err);
-    // keep old admin from breaking
-    res.json({});
+    return res.json({});
   }
 });
 
-// Static files
+// All slots (source of truth)
 app.get("/api/all-slots", (req, res) => {
-  // IMPORTANT: keep this list as the source of truth
   const ALL_SLOTS = [
     "2026-03-02-09-00","2026-03-02-10-00","2026-03-02-10-45","2026-03-02-11-15","2026-03-02-12-00","2026-03-02-13-15","2026-03-02-13-45","2026-03-02-14-30",
     "2026-03-03-09-00","2026-03-03-10-00","2026-03-03-10-45","2026-03-03-11-15","2026-03-03-12-00","2026-03-03-13-15","2026-03-03-13-45","2026-03-03-14-30",
@@ -488,11 +427,13 @@ app.get("/api/all-slots", (req, res) => {
     "2026-05-25-09-00","2026-05-25-10-00","2026-05-25-10-45","2026-05-25-11-15","2026-05-25-12-00","2026-05-25-13-15","2026-05-25-13-45","2026-05-25-14-30",
     "2026-05-26-09-00","2026-05-26-10-00","2026-05-26-10-45","2026-05-26-11-15","2026-05-26-12-00","2026-05-26-13-15","2026-05-26-13-45","2026-05-26-14-30",
     "2026-06-01-09-00","2026-06-01-10-00","2026-06-01-10-45","2026-06-01-11-15","2026-06-01-12-00","2026-06-01-13-15","2026-06-01-13-45","2026-06-01-14-30",
-    "2026-06-02-09-00","2026-06-02-10-00","2026-06-02-10-45","2026-06-02-11-15","2026-06-02-12-00","2026-06-02-13-15","2026-06-02-13-45","2026-06-02-14-30"
+    "2026-06-02-09-00","2026-06-02-10-00","2026-06-02-10-45","2026-06-02-11-15","2026-06-02-12-00","2026-06-02-13-15","2026-06-02-13-45","2026-06-02-14-30",
   ];
 
   return res.json(ALL_SLOTS);
 });
+
+// Static files
 app.use(express.static(path.join(__dirname, "public")));
 
 // Self-ping (Render)

@@ -214,6 +214,20 @@ app.post("/api/manage/cancel", async (req, res) => {
     return res.status(500).json({ ok: false, error: "db_error" });
   }
 });
+// Optional: Admin cancel booking (password protected)
+app.delete("/api/cancel/:slot", async (req, res) => {
+  const pw = req.query.pw;
+  if (pw !== ADMIN_PASSWORD) return res.status(401).json({ message: "Unauthorized" });
+
+  const slot = req.params.slot;
+  try {
+    await pool.query("DELETE FROM bookings WHERE slot = $1", [slot]);
+    res.json({ message: "Booking cancelled" });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ message: "db_error" });
+  }
+});
 
 app.get("/api/appointment/:studentNo", async (req, res) => {
   const sn = normStudentNo(req.params.studentNo);

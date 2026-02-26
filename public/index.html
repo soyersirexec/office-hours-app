@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>AMPAS BOOKING SYSTEM
+  <title>AMPAS
   </title>
   <!-- Tailwind CDN -->
   <script src="https://cdn.tailwindcss.com"></script>
@@ -31,35 +31,38 @@
     </div>
 
   </div>
-<section class="info-card" id="speakingInfo">
-  <div class="info-head">
-    <div>
-      <h2>Speaking Centre</h2>
-      <p>What it is, how to book, and what to prepare.</p>
+<section class="sc-info" id="speakingInfo">
+  <div class="sc-info-top">
+    <div class="sc-info-title">
+      <h2>Speaking Center</h2>
+      <p>General Information</p>
     </div>
-    <button class="btn small" id="checkApptBtn" type="button">Check my appointment</button>
+
+    <button class="sc-check-btn" id="checkApptBtn" type="button">
+      🔎 Check appointment
+    </button>
   </div>
 
-  <div class="info-grid">
-    <div class="info-box">
+  <hr class="sc-divider" />
+
+  <div class="sc-info-grid">
+    <div class="sc-info-box">
       <h3>About</h3>
-      <p>
-        The Speaking Centre helps you practice speaking skills with short 1:1 sessions with Serdar Soyer.
-        Pick an available slot, enter your details, and you’re done.
-      </p>
+      <p>The Speaking Centre helps you practice speaking skills with short 1:1 sessions with Serdar Soyer.
+        Pick an available slot, enter your details, and you’re done.</p>
     </div>
 
-    <div class="info-box">
+    <div class="sc-info-box">
       <h3>How to book</h3>
-      <ol>
+      <ul>
         <li>Select a <b>green</b> available slot.</li>
         <li>Enter your <b>name</b>, <b>student number</b>, and <b>email</b>.</li>
         <li>If your student number is allowed, the slot is reserved.</li>
-      </ol>
+      </ul>
     </div>
 
-    <div class="info-box">
-      <h3>Rules</h3>
+    <div class="sc-info-box">
+      <h3>Notes</h3>
       <ul>
         <li>One booking per student number.</li>
         <li>Booked slots are locked.</li>

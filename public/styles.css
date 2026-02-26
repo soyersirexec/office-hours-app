@@ -149,49 +149,85 @@
   pointer-events: none; /* blocks clicks */
 }
 
-.info-card{
-  background: rgba(255,255,255,.06);
-  border: 1px solid rgba(255,255,255,.10);
-  border-radius: 18px;
-  padding: 16px;
-  margin: 14px 0 18px;
-  backdrop-filter: blur(10px);
+/* Smaller, distinct info panel */
+.sc-info{
+  margin: 10px 0 16px;
+  padding: 14px 14px 12px;
+  border-radius: 16px;
+  border: 1px solid rgba(255,255,255,.14);
+  background: linear-gradient(135deg, rgba(99,102,241,.18), rgba(255,255,255,.05));
+  box-shadow: 0 14px 40px rgba(0,0,0,.22);
 }
-.info-head{
+
+.sc-info-top{
   display:flex;
-  justify-content:space-between;
   align-items:flex-start;
-  gap:12px;
-  margin-bottom: 12px;
+  justify-content:space-between;
+  gap: 12px;
 }
-.info-head h2{ margin:0; font-size: 18px; }
-.info-head p{ margin:6px 0 0; opacity:.8; font-size: 13px; }
-.info-grid{
+
+.sc-info-title h2{
+  margin:0;
+  font-size: 16px;
+  letter-spacing: .2px;
+}
+.sc-info-title p{
+  margin:6px 0 0;
+  opacity:.85;
+  font-size: 12.5px;
+}
+
+/* Divider line between header and content */
+.sc-divider{
+  border:0;
+  height:1px;
+  margin: 12px 0 10px;
+  background: rgba(255,255,255,.14);
+}
+
+/* Grid */
+.sc-info-grid{
   display:grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap:12px;
+  gap: 10px;
 }
-.info-box{
+.sc-info-box{
   background: rgba(0,0,0,.18);
-  border: 1px solid rgba(255,255,255,.08);
+  border: 1px solid rgba(255,255,255,.10);
   border-radius: 14px;
-  padding: 12px;
+  padding: 10px 10px;
 }
-.info-box h3{ margin:0 0 8px; font-size: 14px; }
-.info-box p, .info-box li{ font-size: 13px; opacity:.9; }
-.info-box ol, .info-box ul{ margin: 0; padding-left: 18px; }
+.sc-info-box h3{
+  margin: 0 0 6px;
+  font-size: 13px;
+}
+.sc-info-box p, .sc-info-box li{
+  font-size: 12.5px;
+  opacity: .9;
+}
+.sc-info-box ul{
+  margin:0;
+  padding-left: 16px;
+}
 
-.btn.small{
-  padding: 10px 12px;
-  border-radius: 12px;
-  border: 1px solid rgba(255,255,255,.12);
-  background: rgba(255,255,255,.06);
-  color: inherit;
-  font-weight: 700;
+/* Make button stand out (hard to miss) */
+.sc-check-btn{
+  border: 0;
+  border-radius: 14px;
+  padding: 10px 14px;
+  font-weight: 900;
   cursor: pointer;
+  color: #0b1220;
+  background: linear-gradient(135deg, #f59e0b, #f97316);
+  box-shadow: 0 10px 25px rgba(245,158,11,.25);
+  white-space: nowrap;
+  transform: translateY(0);
+  transition: transform .08s ease, filter .2s ease;
 }
-.btn.small:hover{ background: rgba(255,255,255,.09); }
+.sc-check-btn:hover{ filter: brightness(1.05); }
+.sc-check-btn:active{ transform: scale(.98); }
 
 @media (max-width: 900px){
-  .info-grid{ grid-template-columns: 1fr; }
+  .sc-info-grid{ grid-template-columns: 1fr; }
+  .sc-check-btn{ width: 100%; }
 }

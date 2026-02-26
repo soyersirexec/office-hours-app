@@ -32,7 +32,11 @@ function notify({ type = "info", title = "Notice", message = "", ms = 4000 } = {
 
   close.onclick = () => {
     if (notifyTimer) clearTimeout(notifyTimer);
-    hide();
+
+// ms === 0 (or null) => stay until dismissed
+if (ms && ms > 0) {
+  notifyTimer = setTimeout(hide, ms);
+}
   };
 
   if (notifyTimer) clearTimeout(notifyTimer);
@@ -460,11 +464,11 @@ async function checkAppointmentFlow() {
 
   const b = data.booking || {};
   notify({
-    type: "success",
-    title: "Appointment found",
-    message: `Slot: ${b.slot} • Name: ${b.name || ""}`,
-    ms: 8000,
-  });
+  type: "success",
+  title: "Appointment found",
+  message: `Slot: ${b.slot} • Name: ${b.name || ""}`,
+  ms: 0, // ✅ stays until dismissed
+});
 }
 document.getElementById("checkApptBtn")?.addEventListener("click", checkAppointmentFlow);
   render();

@@ -7,6 +7,7 @@
   </title>
   <!-- Tailwind CDN -->
   <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="stylesheet" href="/styles.css">
 </head>
 <body class="bg-gray-100 text-gray-800 font-sans">
 
@@ -513,5 +514,38 @@
   </div>
 </div>
 <script src="script.js"></script>
+<div id="profileModal" class="modal hidden">
+  <div class="modal-card">
+    <div class="modal-header">
+      <h2>Book a Slot</h2>
+      <p>Please enter your details.</p>
+    </div>
+
+    <form id="profileForm" class="modal-body">
+      <label>
+        Full name
+        <input id="pfName" type="text" autocomplete="name" required />
+      </label>
+
+      <label>
+        Student number
+        <input id="pfStudentNo" type="text" inputmode="numeric" required />
+      </label>
+
+      <label>
+        Email
+        <input id="pfEmail" type="email" autocomplete="email" required />
+      </label>
+
+      <div id="pfError" class="error hidden"></div>
+
+      <div class="modal-actions">
+        <button type="button" id="pfCancel" class="btn secondary">Cancel</button>
+        <button type="submit" class="btn primary">Continue</button>
+      </div>
+    </form>
+  </div>
+</div>
+
 </body>
 </html>

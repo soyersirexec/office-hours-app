@@ -69,7 +69,78 @@ document.addEventListener("DOMContentLoaded", async () => {
     localStorage.setItem(keyName, key);
     return key;
   }
+const PROFILE_KEY = "booking_student_profile_v1";
 
+function getSavedProfile() {
+  try {
+    const p = JSON.parse(localStorage.getItem(PROFILE_KEY) || "null");
+    if (p?.name && p?.studentNo && p?.email) return p;
+  } catch {}
+  return null;
+}
+
+function saveProfile(p) {
+  localStorage.setItem(PROFILE_KEY, JSON.stringify(p));
+}
+
+function clearProfile() {
+  localStorage.removeItem(PROFILE_KEY);
+}
+
+function openProfileModal({ force = false, errorText = "" } = {}) {
+  return new Promise((resolve) => {
+    const modal = document.getElementById("profileModal");
+    const form = document.getElementById("profileForm");
+    const nameEl = document.getElementById("pfName");
+    const snEl = document.getElementById("pfStudentNo");
+    const emailEl = document.getElementById("pfEmail");
+    const errEl = document.getElementById("pfError");
+    const cancelBtn = document.getElementById("pfCancel");
+
+    const existing = !force ? getSavedProfile() : null;
+    if (existing) return resolve(existing);
+
+    // reset + show
+    errEl.classList.toggle("hidden", !errorText);
+    errEl.textContent = errorText || "";
+    nameEl.value = "";
+    snEl.value = "";
+    emailEl.value = "";
+
+    modal.classList.remove("hidden");
+    nameEl.focus();
+
+    function close(val) {
+      modal.classList.add("hidden");
+      form.removeEventListener("submit", onSubmit);
+      cancelBtn.removeEventListener("click", onCancel);
+      resolve(val);
+    }
+
+    function onCancel() {
+      close(null);
+    }
+
+    function onSubmit(e) {
+      e.preventDefault();
+      const profile = {
+        name: nameEl.value.trim(),
+        studentNo: snEl.value.trim(),
+        email: emailEl.value.trim().toLowerCase(),
+      };
+      if (!profile.name || !profile.studentNo || !profile.email) {
+        errEl.textContent = "Please fill all fields.";
+        errEl.classList.remove("hidden");
+        return;
+      }
+      saveProfile(profile);
+      close(profile);
+    }
+
+    form.addEventListener("submit", onSubmit);
+    cancelBtn.addEventListener("click", onCancel);
+  });
+}
   // ---- Disable past dates ----
   (function disablePastDates() {
     const todayDate = new Date();

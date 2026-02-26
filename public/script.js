@@ -184,7 +184,7 @@ document.addEventListener("DOMContentLoaded", async () => {
       }
 
       // ✅ Use modal (no prompt)
-      let profile = await openProfileModal();
+      let profile = await openProfileModal({ force: true });
       if (!profile) return;
 
       let resp;
@@ -229,6 +229,7 @@ document.addEventListener("DOMContentLoaded", async () => {
       serverBooked[slot.dataset.slot] = { bookedAt: Date.now(), name: profile.name };
       disableSlot(slot, true);
       showToastNear(slot, "Booked");
+      clearProfile(); // ✅ so next student can enter their own info on this device
     });
   });
 

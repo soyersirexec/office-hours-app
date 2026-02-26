@@ -1,98 +1,5 @@
 let notifyTimer = null;
-function openCheckModal() {
-  return new Promise((resolve) => {
-    const modal = document.getElementById("checkModal");
-    const form = document.getElementById("checkForm");
-    const snEl = document.getElementById("checkStudentNo");
-    const errEl = document.getElementById("checkError");
-    const cancelBtn = document.getElementById("checkCancel");
 
-    if (!modal || !form || !snEl || !cancelBtn) {
-      notify({ type: "error", title: "Setup error", message: "Check modal HTML is missing.", ms: 7000 });
-      return resolve(null);
-    }
-
-    if (errEl) { errEl.classList.add("hidden"); errEl.textContent = ""; }
-    snEl.value = "";
-
-    modal.classList.remove("hidden");
-    snEl.focus();
-
-    function close(val) {
-      modal.classList.add("hidden");
-      form.removeEventListener("submit", onSubmit);
-      cancelBtn.removeEventListener("click", onCancel);
-      resolve(val);
-    }
-
-    function onCancel() { close(null); }
-
-    function onSubmit(e) {
-      e.preventDefault();
-      const sn = snEl.value.trim();
-      if (!sn) {
-        if (errEl) {
-          errEl.textContent = "Please enter your student number.";
-          errEl.classList.remove("hidden");
-        } else {
-          notify({ type: "warn", title: "Missing", message: "Enter your student number.", ms: 4000 });
-        }
-        return;
-      }
-      close(sn);
-    }
-
-    form.addEventListener("submit", onSubmit);
-    cancelBtn.addEventListener("click", onCancel);
-  });
-}
-
-async function checkAppointmentFlow() {
-  const studentNo = await openCheckModal();
-  if (!studentNo) return;
-
-  notify({ type: "info", title: "Checking…", message: "Searching your appointment.", ms: 1200 });
-
-  let resp;
-  try {
-    resp = await fetch(`/api/appointment/${encodeURIComponent(studentNo)}`, { cache: "no-store" });
-  } catch {
-    notify({ type: "error", title: "Connection problem", message: "Cannot reach the server. Try again.", ms: 6000 });
-    return;
-  }
-
-  let data = null;
-  let text = "";
-  try { data = await resp.json(); }
-  catch { text = await resp.text().catch(() => ""); }
-
-  if (!resp.ok) {
-    if (resp.status === 404) {
-      notify({ type: "warn", title: "No appointment found", message: "No booking exists for this student number.", ms: 6000 });
-      return;
-    }
-    notify({
-      type: "error",
-      title: "Check failed",
-      message: (data && (data.error || data.message)) || text || `Error (${resp.status})`,
-      ms: 7000,
-    });
-    return;
-  }
-
-  const b = data?.booking;
-  if (!b) {
-    notify({ type: "error", title: "Check failed", message: "Invalid server response.", ms: 7000 });
-    return;
-  }
-
-  notify({
-    type: "success",
-    title: "Appointment found",
-    message: `Slot: ${b.slot} • Name: ${b.name || ""}`,
-    ms: 0, // stays until dismissed
-  });
-}
 function notify({ type = "info", title = "Notice", message = "", ms } = {}) {
   const wrap = document.getElementById("notify");
   const card = document.getElementById("notifyCard");
@@ -119,36 +26,43 @@ function notify({ type = "info", title = "Notice", message = "", ms } = {}) {
   t.textContent = title;
   m.textContent = message;
 
+  // show
   wrap.classList.remove("hidden");
 
-  const hide = () => wrap.classList.add("hidden");
+  function hide() {
+    wrap.classList.add("hidden");
+  }
 
-  close.onclick = () => {
+  // ALWAYS ensure close works (overwrite handler cleanly)
+  close.onclick = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
     if (notifyTimer) clearTimeout(notifyTimer);
-
-// ✅ Default: stay until dismissed
-// Only auto-hide if ms is a number > 0
-if (typeof ms === "number" && ms > 0) {
-  notifyTimer = setTimeout(hide, ms);
-}
+    hide();
   };
 
+  // click outside the card closes too
+  wrap.onclick = (e) => {
+    if (e.target === wrap) {
+      if (notifyTimer) clearTimeout(notifyTimer);
+      hide();
+    }
+  };
+
+  // ESC closes
+  document.onkeydown = (e) => {
+    if (e.key === "Escape" && !wrap.classList.contains("hidden")) {
+      if (notifyTimer) clearTimeout(notifyTimer);
+      hide();
+    }
+  };
+
+  // auto-hide only if ms is a number > 0
   if (notifyTimer) clearTimeout(notifyTimer);
-  notifyTimer = setTimeout(hide, ms);
+  if (typeof ms === "number" && ms > 0) {
+    notifyTimer = setTimeout(hide, ms);
+  }
 }
-// Always works even if DOM changes / button moves
-document.addEventListener("click", (e) => {
-  const btn = e.target.closest(".sc-check-btn, #checkApptBtn");
-  if (!btn) return;
-
-  e.preventDefault();
-  e.stopPropagation();
-
-  // optional: immediate feedback so you know it fired
-  notify({ type: "info", title: "Check appointment", message: "Opening…", ms: 1200 });
-
-  checkAppointmentFlow();
-});
 document.addEventListener("DOMContentLoaded", async () => {
   document.querySelectorAll(".sc-check-btn").forEach((btn) => {
   btn.addEventListener("click", checkAppointmentFlow);

@@ -8,8 +8,8 @@ document.addEventListener("DOMContentLoaded", async () => {
   function getISOWeekKey(yyyy_mm_dd) {
     const [y, m, d] = yyyy_mm_dd.split("-").map(Number);
     const date = new Date(Date.UTC(y, m - 1, d));
-    const day = (date.getUTCDay() + 6) % 7; // Mon=0..Sun=6
-    date.setUTCDate(date.getUTCDate() - day + 3); // move to Thursday
+    const day = (date.getUTCDay() + 6) % 7;
+    date.setUTCDate(date.getUTCDate() - day + 3);
     const weekYear = date.getUTCFullYear();
 
     const firstThu = new Date(Date.UTC(weekYear, 0, 4));
@@ -23,7 +23,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   function getCardDate(card) {
     const s = card.querySelector(".slot[data-slot]");
     if (!s) return null;
-    return s.dataset.slot.slice(0, 10); // YYYY-MM-DD
+    return s.dataset.slot.slice(0, 10);
   }
 
   function disableSlot(btn, strong = false) {
@@ -57,30 +57,20 @@ document.addEventListener("DOMContentLoaded", async () => {
     setTimeout(() => toast.classList.add("hidden"), 1800);
   }
 
-  function applyWeekRuleFromDayCard(dayCard, chosenSlotBtn) {
-    if (!dayCard) return;
+  function getStudentKey() {
+    const keyName = "ampas_student_key_v1";
+    let key = localStorage.getItem(keyName);
+    if (key && key.trim()) return key;
 
-    // disable other slots in same day
-    dayCard.querySelectorAll(".slot").forEach((btn) => {
-      if (btn !== chosenSlotBtn) disableSlot(btn, false);
-    });
+    key = prompt("Enter your Student Number (one-time):");
+    if (!key || !key.trim()) return null;
 
-    // disable other day in same week
-    const dateStr = getCardDate(dayCard);
-    if (!dateStr) return;
-    const weekKey = getISOWeekKey(dateStr);
-
-    document.querySelectorAll(".day-card").forEach((card) => {
-      if (card === dayCard) return;
-      const d = getCardDate(card);
-      if (!d) return;
-      if (getISOWeekKey(d) !== weekKey) return;
-
-      card.querySelectorAll(".slot").forEach((btn) => disableSlot(btn, false));
-    });
+    key = key.trim();
+    localStorage.setItem(keyName, key);
+    return key;
   }
 
-  // ---- Disable past dates (no duplicates / no const re-declare issues) ----
+  // ---- Disable past dates ----
   (function disablePastDates() {
     const todayDate = new Date();
     todayDate.setHours(0, 0, 0, 0);
@@ -115,103 +105,67 @@ document.addEventListener("DOMContentLoaded", async () => {
 
   serverBooked = await loadBookedFromServer();
 
-  // Apply server bookings (treat as "booked" and lock the whole week like your rule)
+  // Apply server bookings (disable ONLY the booked slot)
   document.querySelectorAll(".slot[data-slot]").forEach((btn) => {
-    if (btn.disabled) return; // already disabled by past-date rule
-    if (serverBooked[btn.dataset.slot]) {
-      disableSlot(btn, true);
-      const dayCard = btn.closest(".day-card");
-      applyWeekRuleFromDayCard(dayCard, btn);
-    }
+    if (btn.disabled) return;
+    if (serverBooked[btn.dataset.slot]) disableSlot(btn, true);
   });
 
-  // ---- Click booking (POST first, then update UI) ----
-  document.querySelectorAll(".slot").forEach((slot) => {
+  // ---- Click booking (DB enforces "one booking per student") ----
+  document.querySelectorAll(".slot[data-slot]").forEach((slot) => {
     slot.addEventListener("click", async () => {
       if (slot.disabled) return;
 
-      // if already known booked locally
+      const studentKey = getStudentKey();
+      if (!studentKey) return;
+
       if (serverBooked[slot.dataset.slot]) {
         disableSlot(slot, true);
         showToastNear(slot, "Already booked");
-        const dayCard = slot.closest(".day-card");
-        applyWeekRuleFromDayCard(dayCard, slot);
         return;
       }
 
-      let ok = false;
-
+      let res;
       try {
-        const res = await fetch("/api/book", {
+        res = await fetch("/api/book", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ slot: slot.dataset.slot })
+          body: JSON.stringify({ slot: slot.dataset.slot, studentKey })
         });
-
-        if (res.ok) ok = true;
-        else ok = false;
       } catch {
-        ok = false;
-      }
-
-      if (!ok) {
-        // if someone else booked it
-        disableSlot(slot, true);
-        serverBooked[slot.dataset.slot] = { bookedAt: Date.now() };
-        showToastNear(slot, "Already booked");
-        const dayCard = slot.closest(".day-card");
-        applyWeekRuleFromDayCard(dayCard, slot);
+        showToastNear(slot, "Network error");
         return;
       }
 
-      // success
+      if (!res.ok) {
+        let msg = "Cannot book";
+        try {
+          const j = await res.json();
+          if (j && j.error === "You already booked once") msg = "You already booked once";
+          else if (j && (j.error === "Slot already booked" || j.error === "Already booked")) msg = "Slot already booked";
+        } catch {}
+        showToastNear(slot, msg);
+        return;
+      }
+
       serverBooked[slot.dataset.slot] = { bookedAt: Date.now() };
       disableSlot(slot, true);
       showToastNear(slot, "Booked");
-
-      const dayCard = slot.closest(".day-card");
-      applyWeekRuleFromDayCard(dayCard, slot);
     });
   });
 
-  // ---- Group into week boxes (outline) ----
+  // ---- Pagination by day cards (no week grouping) ----
   const dayCards = Array.from(grid.querySelectorAll(".day-card"));
-  const groups = new Map();
-
-  dayCards.forEach((card) => {
-    const d = getCardDate(card);
-    if (!d) return;
-    const key = getISOWeekKey(d);
-    if (!groups.has(key)) groups.set(key, []);
-    groups.get(key).push(card);
-  });
-
-  grid.innerHTML = "";
-
-  for (const [, cards] of groups.entries()) {
-    const box = document.createElement("div");
-    box.className = "week-group border-2 border-gray-400 rounded-2xl p-5 bg-white shadow-md";
-
-    const inner = document.createElement("div");
-    inner.className = "grid grid-cols-1 md:grid-cols-2 gap-6 items-start";
-
-    cards.forEach((c) => inner.appendChild(c));
-    box.appendChild(inner);
-    grid.appendChild(box);
-  }
-
-  // ---- Pagination: 2 weeks per page ----
-  const weekBoxes = Array.from(document.querySelectorAll("#daysGrid .week-group"));
-  const perPage = 2;
+  const perPage = 6; // change if you want (4, 8, 10...)
   let page = 1;
-  const totalPages = Math.max(1, Math.ceil(weekBoxes.length / perPage));
+  const totalPages = Math.max(1, Math.ceil(dayCards.length / perPage));
 
   function render() {
     const start = (page - 1) * perPage;
     const end = start + perPage;
 
-    weekBoxes.forEach((box, i) => {
-      box.style.display = i >= start && i < end ? "" : "none";
+    dayCards.forEach((card, i) => {
+      card.style.display = i >= start && i < end ? "" : "none";
     });
 
     pageInfo.textContent = `Page ${page} / ${totalPages}`;

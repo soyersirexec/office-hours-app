@@ -1,4 +1,27 @@
 // server.js
+const fs = require("fs");
+const path = require("path");
+
+const allowedCsvPath = path.join(__dirname, "allowed_students.csv");
+
+function loadAllowedStudentNos() {
+  try {
+    const raw = fs.readFileSync(allowedCsvPath, "utf8");
+
+    return new Set(
+      raw
+        .split(/\r?\n/)
+        .map(l => l.trim())
+        .filter(Boolean)
+        .filter(l => l.toLowerCase() !== "student_no") // ignore header if present
+        .map(l => l.split(",")[0].trim()) // take first column only
+    );
+  } catch {
+    return new Set();
+  }
+}
+
+let ALLOWED_STUDENTS = loadAllowedStudentNos();
 const express = require("express");
 const path = require("path");
 const { Pool } = require("pg");
@@ -47,36 +70,45 @@ app.get("/api/bookings", async (req, res) => {
   }
 });
 
-// Frontend uses this to book a slot
-// If already booked -> 409
 app.post("/api/book", async (req, res) => {
-  const { slot, name } = req.body || {};
-  if (!slot) return res.status(400).json({ ok: false, error: "Missing slot" });
+  const { slot, name, studentNo, email } = req.body || {};
+
+  if (!slot || !name || !studentNo || !email) {
+    return res.status(400).json({ ok: false, error: "Missing fields" });
+  }
+
+  const sn = String(studentNo).trim();
+  const nm = String(name).trim();
+  const em = String(email).trim().toLowerCase();
+
+  // ✅ Only check student number
+  if (!ALLOWED_STUDENTS.has(sn)) {
+    return res.status(403).json({ ok: false, error: "Not allowed" });
+  }
 
   try {
     const q = `
-      INSERT INTO bookings (slot, name)
-      VALUES ($1, $2)
+      INSERT INTO bookings (slot, name, student_no, email)
+      VALUES ($1, $2, $3, $4)
       ON CONFLICT (slot) DO NOTHING
       RETURNING slot
     `;
-    const result = await pool.query(q, [slot, name || null]);
+
+    const result = await pool.query(q, [slot, nm, sn, em]);
 
     if (result.rowCount === 0) {
-      return res.status(409).json({ ok: false, error: "Already booked" });
+      return res.status(409).json({ ok: false, error: "Slot already booked" });
     }
 
-    res.json({ ok: true });
+    return res.json({ ok: true });
   } catch (err) {
+    if (err && err.code === "23505") {
+      return res.status(409).json({ ok: false, error: "Already booked once" });
+    }
+
     console.error(err);
-    res.status(500).json({ ok: false, error: "db_error" });
+    return res.status(500).json({ ok: false, error: "db_error" });
   }
-});
-// Admin page (password protected) — MUST be before express.static
-app.get("/admin.html", (req, res) => {
-  const password = req.query.pw;
-  if (password !== ADMIN_PASSWORD) return res.status(401).send("Unauthorized");
-  return res.sendFile(path.join(__dirname, "public", "admin.html"));
 });
 
 // Serve static files EXCEPT admin.html

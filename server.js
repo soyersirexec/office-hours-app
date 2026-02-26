@@ -130,6 +130,7 @@ console.log("HIT /api/book", new Date().toISOString());
     // Create manage token (store only hash in DB)
     const manageToken = crypto.randomBytes(32).toString("hex");
     const manageTokenHash = crypto
+    console.log("MANAGE TOKEN:", manageToken, "slot:", slot, "student:", sn);
       .createHash("sha256")
       .update(manageToken)
       .digest("hex");

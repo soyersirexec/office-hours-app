@@ -23,7 +23,6 @@ function loadAllowedStudentNos() {
 
 let ALLOWED_STUDENTS = loadAllowedStudentNos();
 const express = require("express");
-const path = require("path");
 const { Pool } = require("pg");
 
 const app = express();

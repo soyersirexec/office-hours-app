@@ -17,8 +17,8 @@ const allowedCsvPath = path.join(__dirname, "allowed_students.csv");
 function normStudentNo(v) {
   return String(v || "")
     .trim()
-    .replace(/\s+/g, "")  // remove spaces inside
-    .toUpperCase();       // case-insensitive match
+    .replace(/\s+/g, "") // remove spaces inside
+    .toUpperCase(); // case-insensitive match
 }
 function loadAllowedStudentNos() {
   try {
@@ -49,7 +49,6 @@ const pool = new Pool({
   ssl: { rejectUnauthorized: false },
 });
 
-// ---------- DB init ----------
 // ---------- DB init (create + upgrade safely) ----------
 (async () => {
   try {
@@ -66,14 +65,16 @@ const pool = new Pool({
     await pool.query(`ALTER TABLE bookings ADD COLUMN IF NOT EXISTS student_no TEXT;`);
     await pool.query(`ALTER TABLE bookings ADD COLUMN IF NOT EXISTS email TEXT;`);
     await pool.query(`ALTER TABLE bookings ADD COLUMN IF NOT EXISTS manage_token_hash TEXT;`);
-await pool.query(`ALTER TABLE bookings ADD COLUMN IF NOT EXISTS manage_token_created_at TIMESTAMPTZ NOT NULL DEFAULT NOW();`);
+    await pool.query(
+      `ALTER TABLE bookings ADD COLUMN IF NOT EXISTS manage_token_created_at TIMESTAMPTZ NOT NULL DEFAULT NOW();`
+    );
 
-await pool.query(`
-  CREATE UNIQUE INDEX IF NOT EXISTS bookings_manage_token_hash_unique
-  ON bookings (manage_token_hash)
-  WHERE manage_token_hash IS NOT NULL;
-`);
-console.log("MANAGE TOKEN:", manageToken);
+    await pool.query(`
+      CREATE UNIQUE INDEX IF NOT EXISTS bookings_manage_token_hash_unique
+      ON bookings (manage_token_hash)
+      WHERE manage_token_hash IS NOT NULL;
+    `);
+
     // Ensure one booking per student number
     await pool.query(`
       CREATE UNIQUE INDEX IF NOT EXISTS bookings_one_per_student_no
@@ -95,27 +96,23 @@ app.get("/api/bookings", async (req, res) => {
     const { rows } = await pool.query("SELECT slot, booked_at, name, student_no, email FROM bookings");
     const out = {};
     for (const r of rows) {
-  out[r.slot] = {
-    bookedAt: r.booked_at,
-    name: r.name || null,
-    studentNo: r.student_no || null,
-    email: r.email || null,
-  };
-}
+      out[r.slot] = {
+        bookedAt: r.booked_at,
+        name: r.name || null,
+        studentNo: r.student_no || null,
+        email: r.email || null,
+      };
+    }
     res.json(out);
   } catch (err) {
-    console.error("BOOK ERROR:", err);
-return res.status(500).json({
-  ok: false,
-  error: "db_error",
-  code: err.code,
-  detail: err.message
-});
+    console.error("BOOKINGS GET ERROR:", err);
+    res.status(500).json({ ok: false, error: "db_error" });
   }
 });
 
 app.post("/api/book", async (req, res) => {
-console.log("HIT /api/book", new Date().toISOString());
+  console.log("HIT /api/book", new Date().toISOString());
+
   const { slot, name, studentNo, email } = req.body || {};
 
   if (!slot || !name || !studentNo || !email) {
@@ -131,14 +128,13 @@ console.log("HIT /api/book", new Date().toISOString());
     return res.status(403).json({ ok: false, error: "Not allowed" });
   }
 
+  // declare outside so catch can reference (if needed)
+  let manageToken = null;
+
   try {
     // Create manage token (store only hash in DB)
-    const manageToken = crypto.randomBytes(32).toString("hex");
-    const manageTokenHash = crypto
-    
-      .createHash("sha256")
-      .update(manageToken)
-      .digest("hex");
+    manageToken = crypto.randomBytes(32).toString("hex");
+    const manageTokenHash = crypto.createHash("sha256").update(manageToken).digest("hex");
 
     const q = `
       INSERT INTO bookings (slot, name, student_no, email, manage_token_hash)
@@ -153,18 +149,23 @@ console.log("HIT /api/book", new Date().toISOString());
       return res.status(409).json({ ok: false, error: "Slot already booked" });
     }
 
+    // TEMP (optional): if you want to see token in logs for testing, keep this.
+    // Remove later when you email it.
+    console.log("MANAGE TOKEN:", manageToken, "slot:", slot, "student:", sn);
+
     return res.json({ ok: true });
   } catch (err) {
-  console.log("MANAGE TOKEN:", manageToken, "slot:", slot, "student:", sn);
     // one booking per student number
     if (err && err.code === "23505") {
       return res.status(409).json({ ok: false, error: "Already booked once" });
     }
 
-    console.error(err);
+    console.error("BOOK ERROR:", err);
     return res.status(500).json({ ok: false, error: "db_error" });
   }
 });
+
+// Manage lookup by token (used for manage.html later)
 app.get("/api/manage", async (req, res) => {
   const token = String(req.query.token || "").trim();
   if (!token) return res.status(400).json({ ok: false, error: "missing_token" });
@@ -184,33 +185,11 @@ app.get("/api/manage", async (req, res) => {
 
     return res.json({ ok: true, booking: rows[0] });
   } catch (err) {
-    console.error(err);
+    console.error("MANAGE GET ERROR:", err);
     return res.status(500).json({ ok: false, error: "db_error" });
   }
 });
-app.get("/api/manage", async (req, res) => {
-  const token = String(req.query.token || "").trim();
-  if (!token) return res.status(400).json({ ok: false, error: "missing_token" });
 
-  try {
-    const tokenHash = crypto.createHash("sha256").update(token).digest("hex");
-
-    const { rows } = await pool.query(
-      `SELECT slot, name, student_no, email, booked_at
-       FROM bookings
-       WHERE manage_token_hash = $1
-       LIMIT 1`,
-      [tokenHash]
-    );
-
-    if (!rows.length) return res.status(404).json({ ok: false, error: "not_found" });
-
-    return res.json({ ok: true, booking: rows[0] });
-  } catch (err) {
-    console.error(err);
-    return res.status(500).json({ ok: false, error: "db_error" });
-  }
-});
 // Optional: Admin cancel booking (password protected)
 app.delete("/api/cancel/:slot", async (req, res) => {
   const pw = req.query.pw;
@@ -225,19 +204,20 @@ app.delete("/api/cancel/:slot", async (req, res) => {
     res.status(500).json({ message: "db_error" });
   }
 });
+
 app.get("/api/appointment/:studentNo", async (req, res) => {
   const sn = normStudentNo(req.params.studentNo);
   if (!sn) return res.status(400).json({ ok: false, error: "missing_studentNo" });
 
   try {
     const { rows } = await pool.query(
-  `SELECT slot, name, student_no, email, booked_at
-   FROM bookings
-   WHERE UPPER(REGEXP_REPLACE(student_no, '\\s+', '', 'g')) = $1
-   ORDER BY booked_at DESC
-   LIMIT 1`,
-  [sn]
-);
+      `SELECT slot, name, student_no, email, booked_at
+       FROM bookings
+       WHERE UPPER(REGEXP_REPLACE(student_no, '\\s+', '', 'g')) = $1
+       ORDER BY booked_at DESC
+       LIMIT 1`,
+      [sn]
+    );
 
     if (!rows.length) return res.status(404).json({ ok: false, error: "not_found" });
     return res.json({ ok: true, booking: rows[0] });
@@ -246,6 +226,7 @@ app.get("/api/appointment/:studentNo", async (req, res) => {
     return res.status(500).json({ ok: false, error: "db_error" });
   }
 });
+
 // Backward-compatible: old admin page expects /api/slots
 app.get("/api/slots", async (req, res) => {
   try {

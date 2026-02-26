@@ -136,6 +136,19 @@ if (typeof ms === "number" && ms > 0) {
   if (notifyTimer) clearTimeout(notifyTimer);
   notifyTimer = setTimeout(hide, ms);
 }
+// Always works even if DOM changes / button moves
+document.addEventListener("click", (e) => {
+  const btn = e.target.closest(".sc-check-btn, #checkApptBtn");
+  if (!btn) return;
+
+  e.preventDefault();
+  e.stopPropagation();
+
+  // optional: immediate feedback so you know it fired
+  notify({ type: "info", title: "Check appointment", message: "Opening…", ms: 1200 });
+
+  checkAppointmentFlow();
+});
 document.addEventListener("DOMContentLoaded", async () => {
   document.querySelectorAll(".sc-check-btn").forEach((btn) => {
   btn.addEventListener("click", checkAppointmentFlow);

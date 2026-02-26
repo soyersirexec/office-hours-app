@@ -174,63 +174,73 @@ document.addEventListener("DOMContentLoaded", async () => {
   // ---- Click booking ----
   document.querySelectorAll(".slot[data-slot]").forEach((slot) => {
     slot.addEventListener("click", async () => {
-      if (slot.disabled) return;
+  if (slot.disabled) return;
 
-      // If already booked on server, block
-      if (serverBooked[slot.dataset.slot]) {
-        disableSlot(slot, true);
-        showToastNear(slot, "Already booked");
-        return;
-      }
+  // ❗ Block if this specific slot is already booked (correct behavior)
+  if (serverBooked[slot.dataset.slot]) {
+    disableSlot(slot, true);
+    showToastNear(slot, "Slot already booked");
+    return;
+  }
 
-      // ✅ Use modal (no prompt)
-      let profile = await openProfileModal({ force: true });
-      if (!profile) return;
+  // Always ask for student info (shared device friendly)
+  const profile = await openProfileModal({ force: true });
+  if (!profile) return;
 
-      let resp;
-      try {
-        resp = await fetch("/api/book", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            slot: slot.dataset.slot,
-            name: profile.name,
-            studentNo: profile.studentNo,
-            email: profile.email,
-          }),
-        });
-      } catch {
-        showToastNear(slot, "Network error");
-        return;
-      }
-
-      const data = await resp.json().catch(() => ({}));
-
-      if (!resp.ok) {
-        // ✅ invalid student number -> allow retry immediately
-        if (resp.status === 403 && data.error === "Not allowed") {
-          clearProfile();
-          await openProfileModal({
-            force: true,
-            errorText: "Student number not found. Please try again.",
-          });
-          return;
-        }
-
-        let msg = "Cannot book";
-        if (resp.status === 409 && data.error === "Already booked once") msg = "You already booked once";
-        else if (resp.status === 409 && data.error === "Slot already booked") msg = "Slot already booked";
-        else if (resp.status === 400 && data.error === "Missing fields") msg = "Missing fields";
-
-        showToastNear(slot, msg);
-        return;
-      }
-
-      serverBooked[slot.dataset.slot] = { bookedAt: Date.now(), name: profile.name };
-      disableSlot(slot, true);
-      showToastNear(slot, "Booked");
-      clearProfile(); // ✅ so next student can enter their own info on this device
+  let resp;
+  try {
+    resp = await fetch("/api/book", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        slot: slot.dataset.slot,
+        name: profile.name,
+        studentNo: profile.studentNo,
+        email: profile.email,
+      }),
     });
+  } catch {
+    showToastNear(slot, "Network error");
+    return;
+  }
+
+  const data = await resp.json().catch(() => ({}));
+
+  if (!resp.ok) {
+    // Show exact backend reason
+    if (resp.status === 403 && data.error === "Not allowed") {
+      showToastNear(slot, "Student number not allowed");
+      await openProfileModal({
+        force: true,
+        errorText: "Student number not found. Try again.",
+      });
+      return;
+    }
+
+    if (resp.status === 409 && data.error === "Already booked once") {
+      showToastNear(slot, "You already booked once");
+      return;
+    }
+
+    if (resp.status === 409 && data.error === "Slot already booked") {
+      disableSlot(slot, true);
+      showToastNear(slot, "Slot already booked");
+      return;
+    }
+
+    showToastNear(slot, data?.error || "Cannot book");
+    return;
+  }
+
+  // Success
+  serverBooked[slot.dataset.slot] = {
+    bookedAt: Date.now(),
+    name: profile.name,
+  };
+
+  disableSlot(slot, true);
+  showToastNear(slot, "Booked");
+});
   });
 
   // ---- Pagination by day cards (no week grouping) ----

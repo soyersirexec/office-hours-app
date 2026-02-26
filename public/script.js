@@ -93,7 +93,7 @@ async function checkAppointmentFlow() {
     ms: 0, // stays until dismissed
   });
 }
-function notify({ type = "info", title = "Notice", message = "", ms = 4000 } = {}) {
+function notify({ type = "info", title = "Notice", message = "", ms } = {}) {
   const wrap = document.getElementById("notify");
   const card = document.getElementById("notifyCard");
   const icon = document.getElementById("notifyIcon");
@@ -126,8 +126,9 @@ function notify({ type = "info", title = "Notice", message = "", ms = 4000 } = {
   close.onclick = () => {
     if (notifyTimer) clearTimeout(notifyTimer);
 
-// ms === 0 (or null) => stay until dismissed
-if (ms && ms > 0) {
+// ✅ Default: stay until dismissed
+// Only auto-hide if ms is a number > 0
+if (typeof ms === "number" && ms > 0) {
   notifyTimer = setTimeout(hide, ms);
 }
   };

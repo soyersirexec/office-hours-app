@@ -194,71 +194,8 @@ app.get("/api/manage", async (req, res) => {
 });
 
 // Cancel by token
+// Cancel by token
 app.post("/api/manage/cancel", async (req, res) => {
-  pp.post("/api/manage/change", async (req, res) => {
-  const token = String((req.body && req.body.token) || "").trim();
-  const newSlot = String((req.body && req.body.newSlot) || "").trim();
-
-  if (!token || !newSlot) {
-    return res.status(400).json({ ok: false, error: "missing_fields" });
-  }
-
-  try {
-    const tokenHash = crypto.createHash("sha256").update(token).digest("hex");
-
-    // find current booking
-    const { rows } = await pool.query(
-      `SELECT slot, name, student_no, email
-       FROM bookings
-       WHERE manage_token_hash = $1
-       LIMIT 1`,
-      [tokenHash]
-    );
-
-    if (!rows.length) {
-      return res.status(404).json({ ok: false, error: "not_found" });
-    }
-
-    const current = rows[0];
-
-    // start transaction
-    await pool.query("BEGIN");
-
-    // delete old booking
-    await pool.query(
-      `DELETE FROM bookings WHERE manage_token_hash = $1`,
-      [tokenHash]
-    );
-
-    // try to insert new slot with SAME token hash
-    const insert = await pool.query(
-      `INSERT INTO bookings (slot, name, student_no, email, manage_token_hash)
-       VALUES ($1, $2, $3, $4, $5)
-       ON CONFLICT (slot) DO NOTHING
-       RETURNING slot`,
-      [newSlot, current.name, current.student_no, current.email, tokenHash]
-    );
-
-    if (insert.rowCount === 0) {
-      // slot taken → restore old booking
-      await pool.query(
-        `INSERT INTO bookings (slot, name, student_no, email, manage_token_hash)
-         VALUES ($1, $2, $3, $4, $5)`,
-        [current.slot, current.name, current.student_no, current.email, tokenHash]
-      );
-
-      await pool.query("COMMIT");
-      return res.status(409).json({ ok: false, error: "slot_taken" });
-    }
-
-    await pool.query("COMMIT");
-    return res.json({ ok: true, newSlot });
-  } catch (err) {
-    await pool.query("ROLLBACK");
-    console.error("MANAGE CHANGE ERROR:", err);
-    return res.status(500).json({ ok: false, error: "db_error" });
-  }
-});
   const token = String((req.body && req.body.token) || "").trim();
   if (!token) return res.status(400).json({ ok: false, error: "missing_token" });
 
@@ -278,6 +215,69 @@ app.post("/api/manage/cancel", async (req, res) => {
   } catch (err) {
     console.error("MANAGE CANCEL ERROR:", err);
     return res.status(500).json({ ok: false, error: "db_error" });
+  }
+});
+
+// Change by token
+app.post("/api/manage/change", async (req, res) => {
+  const token = String((req.body && req.body.token) || "").trim();
+  const newSlot = String((req.body && req.body.newSlot) || "").trim();
+
+  if (!token) return res.status(400).json({ ok: false, error: "missing_token" });
+  if (!newSlot) return res.status(400).json({ ok: false, error: "missing_newSlot" });
+
+  const client = await pool.connect();
+  try {
+    await client.query("BEGIN");
+
+    const tokenHash = crypto.createHash("sha256").update(token).digest("hex");
+
+    // find current booking
+    const cur = await client.query(
+      `SELECT slot, name, student_no, email
+       FROM bookings
+       WHERE manage_token_hash = $1
+       LIMIT 1`,
+      [tokenHash]
+    );
+
+    if (!cur.rows.length) {
+      await client.query("ROLLBACK");
+      return res.status(404).json({ ok: false, error: "not_found" });
+    }
+
+    const current = cur.rows[0];
+
+    if (current.slot === newSlot) {
+      await client.query("ROLLBACK");
+      return res.json({ ok: true, oldSlot: current.slot, newSlot });
+    }
+
+    // ensure new slot is free
+    const taken = await client.query(`SELECT 1 FROM bookings WHERE slot = $1 LIMIT 1`, [newSlot]);
+    if (taken.rows.length) {
+      await client.query("ROLLBACK");
+      return res.status(409).json({ ok: false, error: "slot_taken" });
+    }
+
+    // insert new booking first (keeps old booking safe)
+    await client.query(
+      `INSERT INTO bookings (slot, name, student_no, email, manage_token_hash)
+       VALUES ($1, $2, $3, $4, $5)`,
+      [newSlot, current.name, current.student_no, current.email, tokenHash]
+    );
+
+    // delete old booking
+    await client.query(`DELETE FROM bookings WHERE slot = $1`, [current.slot]);
+
+    await client.query("COMMIT");
+    return res.json({ ok: true, oldSlot: current.slot, newSlot });
+  } catch (err) {
+    await client.query("ROLLBACK");
+    console.error("MANAGE CHANGE ERROR:", err);
+    return res.status(500).json({ ok: false, error: "db_error" });
+  } finally {
+    client.release();
   }
 });
 

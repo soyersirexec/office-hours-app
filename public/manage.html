@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Manage Appointment</title>
+<script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-100 min-h-screen flex items-center justify-center p-4">
+
+<div class="bg-white rounded-2xl shadow-lg p-6 max-w-md w-full text-center">
+  <h1 class="text-xl font-semibold mb-2">Manage Appointment</h1>
+  <p class="text-sm text-gray-500 mb-4">You can cancel your booking below.</p>
+
+  <div id="info" class="text-sm text-gray-700 mb-4"></div>
+
+  <button
+    id="cancelBtn"
+    class="w-full bg-red-500 hover:bg-red-600 text-white py-2 rounded-lg font-medium transition hidden">
+    Cancel Appointment
+  </button>
+
+  <div id="msg" class="text-sm mt-4 text-gray-600"></div>
+</div>
+
+<script>
+const params = new URLSearchParams(location.search);
+const token = params.get("token");
+
+const info = document.getElementById("info");
+const msg = document.getElementById("msg");
+const cancelBtn = document.getElementById("cancelBtn");
+
+if (!token) {
+  info.textContent = "Invalid link.";
+} else {
+  load();
+}
+
+async function load() {
+  const resp = await fetch(`/api/manage?token=${encodeURIComponent(token)}`);
+  const data = await resp.json();
+
+  if (!data.ok) {
+    info.textContent = "Booking not found.";
+    return;
+  }
+
+  const b = data.booking;
+
+  info.innerHTML = `
+    <div><b>Name:</b> ${b.name}</div>
+    <div><b>Student No:</b> ${b.student_no}</div>
+    <div><b>Slot:</b> ${formatSlot(b.slot)}</div>
+  `;
+
+  cancelBtn.classList.remove("hidden");
+}
+
+cancelBtn.onclick = async () => {
+  cancelBtn.disabled = true;
+
+  const resp = await fetch("/api/manage/cancel", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ token })
+  });
+
+  const data = await resp.json();
+
+  if (data.ok) {
+    msg.textContent = "Your booking has been cancelled.";
+    cancelBtn.classList.add("hidden");
+    info.innerHTML = "";
+  } else {
+    msg.textContent = "Cancel failed.";
+    cancelBtn.disabled = false;
+  }
+};
+
+function formatSlot(slot) {
+  if (!slot) return "";
+  const parts = slot.split("-");
+  const date = parts.slice(0,3).join("-");
+  const time = parts.slice(3).join(":");
+  return `${date} ${time}`;
+}
+</script>
+
+</body>
+</html>

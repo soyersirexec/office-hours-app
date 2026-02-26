@@ -142,3 +142,9 @@
 .booked-slot::after {
   content: " 🔒";
 }
+
+.past-day {
+  opacity: 0.45;
+  filter: grayscale(0.6);
+  pointer-events: none; /* blocks clicks */
+}

@@ -182,23 +182,27 @@ document.addEventListener("DOMContentLoaded", async () => {
 }
   // ---- Disable past dates ----
   (function disablePastDates() {
-    const todayDate = new Date();
-    todayDate.setHours(0, 0, 0, 0);
+  const todayDate = new Date();
+  todayDate.setHours(0, 0, 0, 0);
 
-    document.querySelectorAll(".day-card").forEach((card) => {
-      const first = card.querySelector(".slot[data-slot]");
-      if (!first) return;
+  document.querySelectorAll(".day-card").forEach((card) => {
+    const first = card.querySelector(".slot[data-slot]");
+    if (!first) return;
 
-      const d = first.dataset.slot.slice(0, 10);
-      const [y, m, day] = d.split("-").map(Number);
-      const cardDate = new Date(y, m - 1, day);
-      cardDate.setHours(0, 0, 0, 0);
+    const d = first.dataset.slot.slice(0, 10);
+    const [y, m, day] = d.split("-").map(Number);
+    const cardDate = new Date(y, m - 1, day);
+    cardDate.setHours(0, 0, 0, 0);
 
-      if (cardDate < todayDate) {
-        card.querySelectorAll(".slot").forEach((btn) => disableSlot(btn, false));
-      }
-    });
-  })();
+    if (cardDate < todayDate) {
+      // disable all slots
+      card.querySelectorAll(".slot").forEach((btn) => disableSlot(btn, false));
+
+      // grey out the whole card visually
+      card.classList.add("past-day");
+    }
+  });
+})();
 
   // ---- Load bookings from server + apply on UI ----
   let serverBooked = {};

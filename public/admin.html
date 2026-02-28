@@ -1,0 +1,339 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <title>Admin Panel</title>
+  <style>
+    :root{
+      --bg:#0b1220;
+      --card:#111a2e;
+      --card2:#0f172a;
+      --text:#e5e7eb;
+      --muted:#9ca3af;
+      --border:rgba(255,255,255,.10);
+      --shadow:0 18px 60px rgba(0,0,0,.35);
+      --accent:#6366f1;
+      --danger:#ef4444;
+      --warn:#f59e0b;
+      --ok:#10b981;
+    }
+    *{ box-sizing:border-box; }
+    body{
+      margin:0;
+      font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Arial, "Apple Color Emoji","Segoe UI Emoji";
+      background: radial-gradient(1200px 600px at 20% -10%, rgba(99,102,241,.35), transparent 60%),
+                  radial-gradient(900px 500px at 90% 0%, rgba(16,185,129,.22), transparent 60%),
+                  var(--bg);
+      color:var(--text);
+      padding:24px;
+    }
+    .wrap{ max-width: 1150px; margin: 0 auto; }
+    .topbar{
+      display:flex; align-items:flex-end; justify-content:space-between;
+      gap:16px; margin-bottom:16px;
+    }
+    h1{
+      margin:0;
+      font-size: 22px;
+      letter-spacing: .2px;
+    }
+    .sub{
+      margin-top:6px;
+      color:var(--muted);
+      font-size: 13px;
+    }
+    .actions{ display:flex; gap:10px; align-items:center; }
+    .btn{
+      border: 1px solid var(--border);
+      background: rgba(255,255,255,.06);
+      color:var(--text);
+      padding:10px 12px;
+      border-radius: 12px;
+      cursor:pointer;
+      font-weight: 700;
+      transition: transform .08s ease, background .2s ease, border-color .2s ease;
+      backdrop-filter: blur(10px);
+    }
+    .btn:hover{ background: rgba(255,255,255,.09); border-color: rgba(255,255,255,.18); }
+    .btn:active{ transform: scale(.98); }
+    .btn.primary{
+      background: rgba(99,102,241,.22);
+      border-color: rgba(99,102,241,.35);
+    }
+    .btn.danger{
+      background: rgba(239,68,68,.15);
+      border-color: rgba(239,68,68,.35);
+    }
+    .pill{
+      display:inline-flex; align-items:center; gap:8px;
+      padding:8px 10px;
+      border-radius: 999px;
+      border: 1px solid var(--border);
+      background: rgba(255,255,255,.06);
+      font-size: 13px;
+      color: var(--muted);
+      white-space: nowrap;
+    }
+    .dot{ width:8px; height:8px; border-radius: 999px; background: var(--warn); }
+    .dot.ok{ background: var(--ok); }
+    .card{
+      background: linear-gradient(180deg, rgba(255,255,255,.06), rgba(255,255,255,.03));
+      border: 1px solid var(--border);
+      border-radius: 18px;
+      box-shadow: var(--shadow);
+      overflow:hidden;
+    }
+    table{
+      width:100%;
+      border-collapse: separate;
+      border-spacing: 0;
+      font-size: 14px;
+    }
+    thead th{
+      position: sticky;
+      top: 0;
+      z-index: 2;
+      background: rgba(17,26,46,.9);
+      backdrop-filter: blur(10px);
+      text-align:left;
+      padding: 12px 12px;
+      color: #cbd5e1;
+      border-bottom: 1px solid var(--border);
+    }
+    tbody td{
+      padding: 12px 12px;
+      border-bottom: 1px solid rgba(255,255,255,.06);
+      vertical-align: top;
+    }
+    tbody tr:nth-child(2n){
+      background: rgba(255,255,255,.03);
+    }
+    tbody tr:hover{
+      background: rgba(99,102,241,.10);
+    }
+    .mono{ font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; font-size: 12.5px; }
+    .muted{ color:var(--muted); font-size: 12.5px; }
+    .truncate{
+      max-width: 280px;
+      overflow:hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      display:block;
+    }
+    .empty{
+      padding: 18px;
+      color: var(--muted);
+      text-align:center;
+    }
+
+    /* small screens */
+    @media (max-width: 820px){
+      body{ padding: 14px; }
+      .topbar{ align-items:flex-start; flex-direction: column; }
+      .actions{ width: 100%; justify-content: space-between; }
+      .hide-sm{ display:none; }
+      .truncate{ max-width: 160px; }
+    }
+
+    /* toast */
+    .toast{
+      position: fixed;
+      top: 16px;
+      left: 50%;
+      transform: translateX(-50%);
+      width: min(700px, calc(100% - 24px));
+      z-index: 9999;
+      display:none;
+    }
+    .toast.show{ display:block; }
+    .toast-card{
+      border-radius: 16px;
+      padding: 14px 14px;
+      border: 1px solid var(--border);
+      box-shadow: var(--shadow);
+      backdrop-filter: blur(10px);
+      background: rgba(17,26,46,.92);
+      display:flex;
+      align-items:flex-start;
+      gap: 12px;
+    }
+    .toast-icon{ font-size: 18px; line-height: 1; margin-top: 2px; }
+    .toast-title{ font-weight: 900; margin:0; font-size: 14px; }
+    .toast-msg{ margin:3px 0 0 0; color: var(--muted); font-size: 13px; }
+    .toast-close{
+      margin-left:auto;
+      border:0;
+      background: transparent;
+      color: var(--text);
+      opacity:.75;
+      cursor:pointer;
+      font-size: 16px;
+      padding: 6px 8px;
+      border-radius: 10px;
+    }
+    .toast-close:hover{ opacity: 1; background: rgba(255,255,255,.08); }
+  </style>
+</head>
+<body>
+  <div class="toast" id="toast">
+    <div class="toast-card">
+      <div class="toast-icon" id="toastIcon">ℹ️</div>
+      <div>
+        <p class="toast-title" id="toastTitle">Notice</p>
+        <p class="toast-msg" id="toastMsg"></p>
+      </div>
+      <button class="toast-close" id="toastClose" aria-label="Close">✕</button>
+    </div>
+  </div>
+
+  <div class="wrap">
+    <div class="topbar">
+      <div>
+        <h1>Admin Panel</h1>
+        <div class="sub">Manage bookings • cancel any slot • view student details</div>
+      </div>
+      <div class="actions">
+        <span class="pill" id="statusPill"><span class="dot" id="statusDot"></span><span id="statusText">Loading…</span></span>
+        <button class="btn primary" id="refreshBtn">Refresh</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <table>
+        <thead>
+          <tr>
+            <th>Slot</th>
+            <th class="hide-sm">Name</th>
+            <th>Student No</th>
+            <th class="hide-sm">Email</th>
+            <th class="hide-sm">Booked At</th>
+            <th>Action</th>
+          </tr>
+        </thead>
+        <tbody id="rows">
+          <tr><td class="empty" colspan="6">Loading…</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <script>
+    const ADMIN_PASSWORD = "Www1903121912-"; // keep if you must; better to not hardcode
+
+    let toastTimer = null;
+    function showToast({ icon="ℹ️", title="Notice", message="", ms=3500 } = {}) {
+      const t = document.getElementById("toast");
+      const i = document.getElementById("toastIcon");
+      const tt = document.getElementById("toastTitle");
+      const tm = document.getElementById("toastMsg");
+      const close = document.getElementById("toastClose");
+      if (!t) return;
+
+      i.textContent = icon;
+      tt.textContent = title;
+      tm.textContent = message;
+
+      t.classList.add("show");
+      const hide = () => t.classList.remove("show");
+
+      close.onclick = () => {
+        if (toastTimer) clearTimeout(toastTimer);
+        hide();
+      };
+
+      if (toastTimer) clearTimeout(toastTimer);
+      toastTimer = setTimeout(hide, ms);
+    }
+
+    function setStatus(ok, text){
+      const dot = document.getElementById("statusDot");
+      const s = document.getElementById("statusText");
+      if (!dot || !s) return;
+      dot.classList.toggle("ok", !!ok);
+      s.textContent = text;
+    }
+
+    function fmtDate(v) {
+      try { return v ? new Date(v).toLocaleString() : ""; }
+      catch { return ""; }
+    }
+
+    function esc(s){
+      return String(s ?? "").replace(/[&<>"']/g, c => ({
+        "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"
+      }[c]));
+    }
+
+    async function loadBookings() {
+      setStatus(false, "Loading…");
+      const tbody = document.getElementById("rows");
+      tbody.innerHTML = `<tr><td class="empty" colspan="6">Loading…</td></tr>`;
+
+      try {
+        const res = await fetch("/api/bookings", { cache: "no-store" });
+        if (!res.ok) throw new Error("HTTP " + res.status);
+
+        const bookings = await res.json();
+        const slots = Object.keys(bookings).sort();
+
+        if (slots.length === 0) {
+          tbody.innerHTML = `<tr><td class="empty" colspan="6">No bookings yet.</td></tr>`;
+          setStatus(true, "0 bookings");
+          return;
+        }
+
+        tbody.innerHTML = "";
+        for (const slot of slots) {
+          const b = bookings[slot] || {};
+          const row = document.createElement("tr");
+
+          row.innerHTML = `
+            <td class="mono"><span class="truncate" title="${esc(slot)}">${esc(slot)}</span></td>
+            <td class="hide-sm">${esc(b.name || "")}</td>
+            <td class="mono">${esc(b.studentNo || "")}</td>
+            <td class="hide-sm"><span class="truncate" title="${esc(b.email || "")}">${esc(b.email || "")}</span></td>
+            <td class="hide-sm muted">${esc(fmtDate(b.bookedAt))}</td>
+            <td><button class="btn danger" data-slot="${esc(slot)}">Cancel</button></td>
+          `;
+          tbody.appendChild(row);
+        }
+
+        // Wire cancel buttons
+        tbody.querySelectorAll("button[data-slot]").forEach(btn => {
+          btn.addEventListener("click", () => cancelSlot(btn.dataset.slot));
+        });
+
+        setStatus(true, `${slots.length} booking${slots.length === 1 ? "" : "s"}`);
+      } catch (err) {
+        tbody.innerHTML = `<tr><td class="empty" colspan="6">Failed to load.</td></tr>`;
+        setStatus(false, "Error");
+        showToast({ icon:"⛔", title:"Load failed", message: err.message, ms: 6000 });
+      }
+    }
+
+    async function cancelSlot(slot) {
+      if (!confirm(`Cancel booking for:\n${slot}\n\nAre you sure?`)) return;
+
+      try {
+        const res = await fetch(`/api/cancel/${encodeURIComponent(slot)}?pw=${encodeURIComponent(ADMIN_PASSWORD)}`, {
+          method: "DELETE"
+        });
+        const data = await res.json().catch(() => ({}));
+
+        if (res.ok) {
+          showToast({ icon:"✅", title:"Cancelled", message: data.message || "Booking cancelled", ms: 3500 });
+          loadBookings();
+        } else {
+          showToast({ icon:"⛔", title:"Cancel failed", message: data.message || ("HTTP " + res.status), ms: 6000 });
+        }
+      } catch (err) {
+        showToast({ icon:"⛔", title:"Cancel failed", message: err.message, ms: 6000 });
+      }
+    }
+
+    document.getElementById("refreshBtn")?.addEventListener("click", loadBookings);
+    window.onload = loadBookings;
+  </script>
+</body>
+</html>

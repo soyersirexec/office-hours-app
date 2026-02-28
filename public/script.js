@@ -248,7 +248,7 @@ document.addEventListener("DOMContentLoaded", async () => {
 
   async function loadBookedFromServer() {
     try {
-      const resp = await fetch("/api/bookings", { cache: "no-store" });
+      const resp = await fetch("/api/availability", { cache: "no-store" });
       if (!resp.ok) return {};
       return await resp.json();
     } catch {

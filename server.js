@@ -12,6 +12,76 @@ const PORT = process.env.PORT || 3000;
 // Recommended: set ADMIN_PASSWORD in Render env vars instead of hardcoding
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || "CHANGE_ME_IN_RENDER_ENV";
 
+// Session cookie signing secret (set ADMIN_SESSION_SECRET in env for stable sessions)
+const ADMIN_SESSION_SECRET =
+  process.env.ADMIN_SESSION_SECRET ||
+  crypto.createHash("sha256").update(String(ADMIN_PASSWORD)).digest("hex");
+
+const ADMIN_COOKIE_NAME = "admin_session";
+const ADMIN_SESSION_MS = 8 * 60 * 60 * 1000; // 8 hours
+
+function base64urlEncode(buf) {
+  return Buffer.from(buf).toString("base64").replace(/=/g, "").replace(/\+/g, "-").replace(/\//g, "_");
+}
+function base64urlDecode(str) {
+  const s = String(str).replace(/-/g, "+").replace(/_/g, "/");
+  const pad = s.length % 4 ? "=".repeat(4 - (s.length % 4)) : "";
+  return Buffer.from(s + pad, "base64");
+}
+
+function parseCookies(req) {
+  const header = req.headers.cookie || "";
+  const out = {};
+  header.split(";").forEach((part) => {
+    const idx = part.indexOf("=");
+    if (idx === -1) return;
+    const k = part.slice(0, idx).trim();
+    const v = part.slice(idx + 1).trim();
+    if (!k) return;
+    out[k] = decodeURIComponent(v);
+  });
+  return out;
+}
+
+function signAdminPayload(payloadB64) {
+  return crypto.createHmac("sha256", ADMIN_SESSION_SECRET).update(payloadB64).digest("hex");
+}
+
+function makeAdminCookieValue() {
+  const payload = { exp: Date.now() + ADMIN_SESSION_MS };
+  const payloadB64 = base64urlEncode(JSON.stringify(payload));
+  const sig = signAdminPayload(payloadB64);
+  return `${payloadB64}.${sig}`;
+}
+
+function verifyAdminCookieValue(value) {
+  if (!value || typeof value !== "string") return { ok: false };
+  const [payloadB64, sig] = value.split(".");
+  if (!payloadB64 || !sig) return { ok: false };
+  const expected = signAdminPayload(payloadB64);
+  // constant-time compare
+  const a = Buffer.from(expected, "hex");
+  const b = Buffer.from(sig, "hex");
+  if (a.length !== b.length) return { ok: false };
+  if (!crypto.timingSafeEqual(a, b)) return { ok: false };
+
+  try {
+    const payload = JSON.parse(base64urlDecode(payloadB64).toString("utf8"));
+    if (!payload || typeof payload.exp !== "number") return { ok: false };
+    if (Date.now() > payload.exp) return { ok: false, expired: true };
+    return { ok: true, payload };
+  } catch {
+    return { ok: false };
+  }
+}
+
+function requireAdmin(req, res, next) {
+  const cookies = parseCookies(req);
+  const v = verifyAdminCookieValue(cookies[ADMIN_COOKIE_NAME]);
+  if (!v.ok) return res.status(401).json({ ok: false, error: "unauthorized" });
+  return next();
+}
+
 // ===== Resend email (no SMTP) =====
 // Render env vars you must set:
 //   RESEND_API_KEY=your_resend_api_key
@@ -257,22 +327,74 @@ const pool = new Pool({
 // ---------- API ----------
 
 // Frontend uses this to mark booked slots on load
-app.get("/api/bookings", async (req, res) => {
+
+// Public endpoint: return only which slots are booked (no personal data)
+app.get("/api/availability", async (req, res) => {
   try {
-    const { rows } = await pool.query("SELECT slot, booked_at, name, student_no, email FROM bookings");
+    const { rows } = await pool.query("SELECT slot, booked_at FROM bookings");
     const out = {};
-    for (const r of rows) {
-      out[r.slot] = {
-        bookedAt: r.booked_at,
-        name: r.name || null,
-        studentNo: r.student_no || null,
-        email: r.email || null,
-      };
-    }
+    for (const r of rows) out[r.slot] = { bookedAt: r.booked_at };
     return res.json(out);
   } catch (err) {
-    console.error("BOOKINGS GET ERROR:", err);
+    console.error("AVAILABILITY GET ERROR:", err);
     return res.json({});
+  }
+});
+
+// Admin endpoints (cookie-authenticated)
+app.get("/api/admin/me", requireAdmin, (req, res) => {
+  res.json({ ok: true });
+});
+
+app.post("/api/admin/login", async (req, res) => {
+  const { password } = req.body || {};
+  if (!password || password !== ADMIN_PASSWORD) {
+    return res.status(401).json({ ok: false, error: "unauthorized" });
+  }
+
+  const cookieValue = makeAdminCookieValue();
+  const isProd = process.env.NODE_ENV === "production";
+
+  res.setHeader(
+    "Set-Cookie",
+    `${ADMIN_COOKIE_NAME}=${encodeURIComponent(cookieValue)}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${Math.floor(
+      ADMIN_SESSION_MS / 1000
+    )}${isProd ? "; Secure" : ""}`
+  );
+
+  return res.json({ ok: true });
+});
+
+app.post("/api/admin/logout", (req, res) => {
+  const isProd = process.env.NODE_ENV === "production";
+  res.setHeader(
+    "Set-Cookie",
+    `${ADMIN_COOKIE_NAME}=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0${isProd ? "; Secure" : ""}`
+  );
+  return res.json({ ok: true });
+});
+
+app.get("/api/admin/bookings", requireAdmin, async (req, res) => {
+  try {
+    const { rows } = await pool.query(
+      "SELECT slot, booked_at, name, student_no, email FROM bookings ORDER BY slot ASC"
+    );
+    return res.json({ ok: true, rows });
+  } catch (err) {
+    console.error("ADMIN BOOKINGS GET ERROR:", err);
+    return res.status(500).json({ ok: false, error: "db_error" });
+  }
+});
+
+app.delete("/api/admin/cancel/:slot", requireAdmin, async (req, res) => {
+  const slot = decodeURIComponent(req.params.slot);
+  try {
+    const result = await pool.query("DELETE FROM bookings WHERE slot = $1 RETURNING slot", [slot]);
+    if (result.rowCount === 0) return res.status(404).json({ ok: false, error: "not_found" });
+    return res.json({ ok: true, slot: result.rows[0].slot });
+  } catch (err) {
+    console.error("ADMIN CANCEL ERROR:", err);
+    return res.status(500).json({ ok: false, error: "db_error" });
   }
 });
 
@@ -461,10 +583,7 @@ app.post("/api/manage/change", async (req, res) => {
 });
 
 // Optional: Admin cancel booking (password protected)
-app.delete("/api/cancel/:slot", async (req, res) => {
-  const pw = req.query.pw;
-  if (pw !== ADMIN_PASSWORD) return res.status(401).json({ message: "Unauthorized" });
-
+app.delete("/api/cancel/:slot", requireAdmin, async (req, res) => {
   const slot = decodeURIComponent(req.params.slot);
   try {
     const result = await pool.query("DELETE FROM bookings WHERE slot = $1 RETURNING slot", [slot]);

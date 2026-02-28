@@ -60,7 +60,13 @@ function verifyAdminCookieValue(val) {
     .update(payloadB64)
     .digest("base64")
     .replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, "");
+  try {
+  // timingSafeEqual throws if buffer lengths differ
+  if (sig.length !== expected.length) return null;
   if (!crypto.timingSafeEqual(Buffer.from(sig), Buffer.from(expected))) return null;
+} catch {
+  return null;
+}
 
   try {
     const json = Buffer.from(payloadB64.replace(/-/g, "+").replace(/_/g, "/"), "base64").toString("utf8");
@@ -651,8 +657,13 @@ app.post("/api/admin/login", (req, res) => {
   const pw = String((req.body && req.body.password) || "").trim();
   const expected = String(ADMIN_PASSWORD || "").trim();
   if (!expected || expected === "CHANGE_ME_IN_RENDER_ENV") {
-    return res.status(500).json({ ok: false, error: "admin_password_not_set" });
-  }
+  console.error("ADMIN_PASSWORD is missing or still default. Set it in Render env and restart the service.");
+  return res.status(500).json({
+    ok: false,
+    error: "admin_password_not_set",
+    hint: "Set ADMIN_PASSWORD in your Render service Environment and restart/redeploy."
+  });
+}
   if (pw !== expected) return res.status(401).json({ ok: false, error: "invalid_password" });
 
   const cookieValue = signAdminPayload({ role: "admin", exp: Date.now() + ADMIN_SESSION_MS });
@@ -680,6 +691,17 @@ app.get("/api/admin/me", (req, res) => {
   if (!payload) return res.status(401).json({ ok: false });
   return res.json({ ok: true });
 });
+
+// Simple health check for admin auth config (does not reveal secrets)
+app.get("/api/admin/ping", (req, res) => {
+  const expected = String(ADMIN_PASSWORD || "").trim();
+  return res.json({
+    ok: true,
+    adminPasswordConfigured: !!(expected && expected !== "CHANGE_ME_IN_RENDER_ENV"),
+    cookieName: ADMIN_COOKIE_NAME
+  });
+});
+
 
 app.get("/api/admin/bookings", requireAdmin, async (req, res) => {
   try {

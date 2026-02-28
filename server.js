@@ -375,7 +375,7 @@ app.post("/api/admin/logout", (req, res) => {
   return res.json({ ok: true });
 });
 
-app.get("/api/admin/bookings", requireAdmin, async (req, res) =>, requireAdmin, async (req, res) => {
+app.get("/api/admin/bookings", requireAdmin, async (req, res) => {
   try {
     const { rows } = await pool.query(
       "SELECT slot, booked_at, name, student_no, email FROM bookings ORDER BY slot ASC"

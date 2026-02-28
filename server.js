@@ -393,6 +393,9 @@ app.post("/api/book", async (req, res) => {
   const sn = normStudentNo(studentNo);
   const nm = String(name).trim();
   const em = String(email).trim().toLowerCase();
+  if (!em.endsWith("@ankaramedipol.edu.tr")) {
+  return res.status(400).json({ ok: false, error: "invalid_email_domain" });
+}
 
   if (!ALLOWED_STUDENTS.has(sn)) {
     return res.status(403).json({ ok: false, error: "Not allowed" });

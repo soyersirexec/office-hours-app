@@ -84,6 +84,11 @@ document.addEventListener("DOMContentLoaded", async () => {
 
   if (!grid || !prevBtn || !nextBtn || !pageInfo) return;
 
+  // Capture original classes so polling can re-enable slots cleanly
+  document.querySelectorAll(".slot[data-slot]").forEach((btn) => {
+    if (!btn.dataset.origClass) btn.dataset.origClass = btn.className;
+  });
+
   function getISOWeekKey(yyyy_mm_dd) {
     const [y, m, d] = yyyy_mm_dd.split("-").map(Number);
     const date = new Date(Date.UTC(y, m - 1, d));
@@ -119,6 +124,21 @@ document.addEventListener("DOMContentLoaded", async () => {
       strong ? "opacity-80" : "opacity-70"
     );
     btn.disabled = true;
+  }
+
+  function enableSlot(btn) {
+    // Do not re-enable slots that were disabled because they are in the past
+    if (btn.dataset.locked === "past") return;
+
+    // Restore original classes if captured
+    if (btn.dataset.origClass) {
+      btn.className = btn.dataset.origClass;
+    } else {
+      // Fallback: remove disabled styling
+      btn.classList.remove("bg-gray-400","bg-gray-200","cursor-not-allowed","opacity-80","opacity-70","booked-slot");
+      btn.classList.add("bg-emerald-500","hover:bg-emerald-600","active:scale-95");
+    }
+    btn.disabled = false;
   }
 
   function showToastNear(element, message) {
@@ -235,7 +255,7 @@ document.addEventListener("DOMContentLoaded", async () => {
 
     if (cardDate < todayDate) {
       // disable all slots
-      card.querySelectorAll(".slot").forEach((btn) => disableSlot(btn, false));
+      card.querySelectorAll(".slot").forEach((btn) => { btn.dataset.locked = "past"; disableSlot(btn, false); });
 
       // grey out the whole card visually
       card.classList.add("past-day");
@@ -263,6 +283,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   const booking = serverBooked[btn.dataset.slot];
 
   if (booking) {
+    btn.dataset.locked = "booked";
     disableSlot(btn, true);
     btn.classList.add("booked-slot");
 
@@ -272,10 +293,56 @@ document.addEventListener("DOMContentLoaded", async () => {
   btn.title = "Booked";
 }
   } else {
-    btn.classList.remove("booked-slot"); // 🔥 ensure free slots stay clean
+    // If this slot was previously disabled due to being booked, re-enable it
+    if (btn.dataset.locked === "booked") {
+      delete btn.dataset.locked;
+      enableSlot(btn);
+    }
+    btn.classList.remove("booked-slot");
     btn.title = "";
   }
 });
+
+
+  // ---- Live availability polling (auto-updates without refresh) ----
+  let lastAvailabilitySig = "";
+  async function refreshAvailability({ silent = true } = {}) {
+    const latest = await loadBookedFromServer();
+    // lightweight signature to skip unnecessary DOM work
+    const sig = JSON.stringify(Object.keys(latest).sort());
+    if (sig === lastAvailabilitySig) return;
+
+    lastAvailabilitySig = sig;
+    serverBooked = latest;
+
+    // Apply updates to UI
+    document.querySelectorAll(".slot[data-slot]").forEach((btn) => {
+      const booking = serverBooked[btn.dataset.slot];
+      if (booking) {
+        if (btn.dataset.locked !== "past") btn.dataset.locked = "booked";
+        disableSlot(btn, true);
+        btn.classList.add("booked-slot");
+        btn.title = "Booked";
+      } else {
+        if (btn.dataset.locked === "booked") {
+          delete btn.dataset.locked;
+          enableSlot(btn);
+        }
+        btn.classList.remove("booked-slot");
+        btn.title = "";
+      }
+    });
+  }
+
+  // Prime signature from initial load
+  lastAvailabilitySig = JSON.stringify(Object.keys(serverBooked).sort());
+
+  // Poll every 12 seconds (adjust if you want)
+  const POLL_MS = 12000;
+  setInterval(() => {
+    refreshAvailability({ silent: true });
+  }, POLL_MS);
+
 
   // ---- Click booking ----
   document.querySelectorAll(".slot[data-slot]").forEach((slot) => {
@@ -382,7 +449,8 @@ slot.title = `Booked by: ${maskName(profile.name)}`;
   }
 
   // Success
-  serverBooked[slot.dataset.slot] = { bookedAt: Date.now(), name: profile.name };
+  serverBooked[slot.dataset.slot] = { bookedAt: Date.now() };
+  slot.dataset.locked = "booked";
   slot.title = `Booked by: ${profile.name}`;
   disableSlot(slot, true);
 

@@ -10,7 +10,7 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 
 // Recommended: set ADMIN_PASSWORD in Render env vars instead of hardcoding
-const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || "CHANGE_ME_IN_RENDER_ENV";
+const ADMIN_PASSWORD = String(process.env.ADMIN_PASSWORD || "CHANGE_ME_IN_RENDER_ENV").trim();
 
 // Session cookie signing secret (set ADMIN_SESSION_SECRET in env for stable sessions)
 const ADMIN_SESSION_SECRET =
@@ -348,7 +348,7 @@ app.get("/api/admin/me", requireAdmin, (req, res) => {
 
 app.post("/api/admin/login", async (req, res) => {
   const { password } = req.body || {};
-  if (!password || password !== ADMIN_PASSWORD) {
+  if (!password || String(password).trim() !== ADMIN_PASSWORD) {
     return res.status(401).json({ ok: false, error: "unauthorized" });
   }
 
@@ -661,30 +661,93 @@ app.get("/api/all-slots", (req, res) => {
 
   return res.json(ALL_SLOTS);
 });
+
+
+/* =========================
+   Hide admin page + protect /admin
+   ========================= */
 const path = require("path");
 
-// middleware to check admin session
+// directory served statically
+const PUBLIC_DIR = path.join(__dirname, "public");
+
+// Admin session guard (requires valid cookie)
 function requireAdmin(req, res, next) {
-  if (req.cookies && req.cookies.admin_session) {
-    try {
-      const decoded = jwt.verify(req.cookies.admin_session, ADMIN_SESSION_SECRET);
-      if (decoded && decoded.role === "admin") {
-        return next();
-      }
-    } catch (err) {}
+  const token = req.cookies?.admin_session;
+  if (!token) return res.redirect("/admin-login");
+
+  try {
+    const decoded = jwt.verify(token, ADMIN_SESSION_SECRET);
+    if (decoded?.role === "admin") return next();
+  } catch (e) {
+    // ignore
   }
   return res.redirect("/admin-login");
 }
 
-// serve login page (public)
-app.get("/admin-login", (req, res) => {
-  res.sendFile(path.join(__dirname, "public", "admin.secure.html"));
+// Block direct access to the file names (even if they exist in /public)
+app.get(["/admin.html", "/admin.secure.html"], (req, res) => {
+  return res.status(404).send("Not found");
 });
 
-// serve admin panel (protected)
-app.get("/admin", requireAdmin, (req, res) => {
-  res.sendFile(path.join(__dirname, "private", "admin.html"));
+// Lightweight login page served by the backend (not a static file)
+app.get("/admin-login", (req, res) => {
+  res.setHeader("Content-Type", "text/html; charset=utf-8");
+  return res.send(`<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Admin Login</title>
+  <style>
+    body{font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;display:flex;min-height:100vh;align-items:center;justify-content:center;margin:0;padding:24px;background:#f6f7fb}
+    .card{max-width:420px;width:100%;background:#fff;border-radius:16px;padding:20px;box-shadow:0 10px 30px rgba(0,0,0,.08)}
+    h1{font-size:18px;margin:0 0 12px}
+    input,button{width:100%;padding:12px 14px;border-radius:10px;border:1px solid #d8dde7;font-size:14px}
+    button{margin-top:10px;cursor:pointer}
+    .err{color:#b00020;margin-top:10px;min-height:18px;font-size:13px}
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h1>Admin login</h1>
+    <form id="f">
+      <input id="pw" type="password" placeholder="Password" autocomplete="current-password" required />
+      <button type="submit">Sign in</button>
+      <div class="err" id="err"></div>
+    </form>
+  </div>
+<script>
+  const f = document.getElementById('f');
+  const pw = document.getElementById('pw');
+  const err = document.getElementById('err');
+  f.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    err.textContent = '';
+    try {
+      const r = await fetch('/api/admin/login', {
+        method: 'POST',
+        headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({ password: pw.value })
+      });
+      const j = await r.json().catch(()=> ({}));
+      if (!r.ok) throw new Error(j.error || 'Login failed');
+      location.href = '/admin';
+    } catch (e) {
+      err.textContent = e.message || String(e);
+    }
+  });
+</script>
+</body>
+</html>`);
 });
+
+// Protected admin panel route
+app.get("/admin", requireAdmin, (req, res) => {
+  // Serve your admin UI file from /public, but only through this route
+  return res.sendFile(path.join(PUBLIC_DIR, "admin.html"));
+});
+
 // Static files
 app.use(express.static(path.join(__dirname, "public")));
 

@@ -1,0 +1,389 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <title>Admin Panel</title>
+  <style>
+    :root{
+      --bg:#0b1220;
+      --card:#111a2e;
+      --card2:#0f172a;
+      --text:#e5e7eb;
+      --muted:#9ca3af;
+      --border:rgba(255,255,255,.10);
+      --shadow:0 18px 60px rgba(0,0,0,.35);
+      --accent:#6366f1;
+      --danger:#ef4444;
+      --ok:#22c55e;
+      --warn:#f59e0b;
+      --radius:18px;
+    }
+    *{box-sizing:border-box}
+    body{
+      margin:0;
+      font-family:system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, "Apple Color Emoji","Segoe UI Emoji";
+      background: radial-gradient(1200px 700px at 10% 10%, rgba(99,102,241,.25), transparent 60%),
+                  radial-gradient(900px 600px at 90% 10%, rgba(34,197,94,.18), transparent 55%),
+                  radial-gradient(900px 600px at 50% 90%, rgba(245,158,11,.14), transparent 55%),
+                  var(--bg);
+      color:var(--text);
+      min-height:100vh;
+      padding:28px 18px 60px;
+    }
+    .wrap{max-width:1100px;margin:0 auto;}
+    .top{
+      display:flex;
+      gap:14px;
+      align-items:center;
+      justify-content:space-between;
+      margin-bottom:18px;
+    }
+    .title{
+      display:flex;flex-direction:column;gap:2px;
+    }
+    h1{margin:0;font-size:22px;letter-spacing:.2px}
+    .sub{color:var(--muted);font-size:13px}
+    .actions{display:flex;gap:10px;align-items:center}
+    .btn{
+      border:1px solid var(--border);
+      background:rgba(255,255,255,.06);
+      color:var(--text);
+      padding:10px 12px;
+      border-radius:12px;
+      cursor:pointer;
+      font-weight:600;
+      font-size:13px;
+      transition:.15s ease;
+    }
+    .btn:hover{transform:translateY(-1px);background:rgba(255,255,255,.10)}
+    .btn.primary{background:rgba(99,102,241,.18);border-color:rgba(99,102,241,.4)}
+    .btn.danger{background:rgba(239,68,68,.16);border-color:rgba(239,68,68,.45)}
+    .card{
+      background:linear-gradient(180deg, rgba(255,255,255,.06), rgba(255,255,255,.03));
+      border:1px solid var(--border);
+      border-radius:var(--radius);
+      box-shadow:var(--shadow);
+      overflow:hidden;
+    }
+    .tableWrap{overflow:auto}
+    table{width:100%;border-collapse:collapse;min-width:900px}
+    th,td{padding:12px 12px;border-bottom:1px solid rgba(255,255,255,.08);text-align:left;font-size:13px}
+    th{color:#dbeafe;font-weight:700;background:rgba(255,255,255,.04);position:sticky;top:0;backdrop-filter:blur(8px)}
+    tr:hover td{background:rgba(255,255,255,.03)}
+    .pill{
+      display:inline-flex;align-items:center;gap:8px;
+      padding:6px 10px;border-radius:999px;
+      border:1px solid rgba(255,255,255,.10);
+      background:rgba(255,255,255,.06);
+      font-size:12px;color:var(--muted);
+      white-space:nowrap;
+    }
+    .pill.ok{border-color:rgba(34,197,94,.35); background:rgba(34,197,94,.10); color:#bbf7d0}
+    .pill.warn{border-color:rgba(245,158,11,.35); background:rgba(245,158,11,.10); color:#fde68a}
+    .pill.bad{border-color:rgba(239,68,68,.35); background:rgba(239,68,68,.10); color:#fecaca}
+    .small{color:var(--muted);font-size:12px}
+    .slot{font-family:ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;font-size:12px}
+    .empty{color:var(--muted);text-align:center;padding:26px 12px}
+
+    /* Toast */
+    .toast{
+      position:fixed;
+      right:16px;
+      bottom:16px;
+      width:min(420px, calc(100vw - 32px));
+      background:linear-gradient(180deg, rgba(255,255,255,.10), rgba(255,255,255,.06));
+      border:1px solid var(--border);
+      border-radius:16px;
+      box-shadow:0 18px 60px rgba(0,0,0,.45);
+      padding:14px 14px 12px;
+      display:none;
+      z-index:50;
+      backdrop-filter:blur(10px);
+    }
+    .toast.show{display:block;animation:pop .12s ease}
+    @keyframes pop{from{transform:translateY(6px);opacity:.0}to{transform:translateY(0);opacity:1}}
+    .toast .row{display:flex;gap:10px;align-items:flex-start}
+    .toast .icon{font-size:18px;line-height:1.2}
+    .toast .t{font-weight:800;margin:0 0 4px;font-size:13px}
+    .toast .m{margin:0;color:var(--muted);font-size:13px}
+    .toast .x{margin-left:auto;cursor:pointer;opacity:.8}
+    .toast .x:hover{opacity:1}
+
+    /* Login overlay */
+    .overlay{
+      position:fixed;inset:0;
+      background:rgba(0,0,0,.55);
+      display:none;
+      align-items:center;
+      justify-content:center;
+      padding:18px;
+      z-index:60;
+    }
+    .overlay.show{display:flex}
+    .loginCard{
+      width:min(520px, 100%);
+      border-radius:18px;
+      border:1px solid var(--border);
+      background:linear-gradient(180deg, rgba(17,26,46,.95), rgba(15,23,42,.95));
+      box-shadow:0 20px 70px rgba(0,0,0,.55);
+      padding:18px;
+    }
+    .loginCard h2{margin:0 0 6px;font-size:18px}
+    .loginCard p{margin:0 0 14px;color:var(--muted);font-size:13px;line-height:1.45}
+    .field{display:flex;flex-direction:column;gap:6px;margin:10px 0 12px}
+    .field label{font-size:12px;color:var(--muted)}
+    .field input{
+      padding:12px 12px;
+      border-radius:12px;
+      border:1px solid rgba(255,255,255,.14);
+      outline:none;
+      background:rgba(255,255,255,.06);
+      color:var(--text);
+      font-size:14px;
+    }
+    .field input:focus{border-color:rgba(99,102,241,.55); box-shadow:0 0 0 4px rgba(99,102,241,.18)}
+    .loginActions{display:flex;gap:10px;align-items:center;justify-content:flex-end;margin-top:8px}
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="top">
+      <div class="title">
+        <h1>Admin Panel</h1>
+        <div class="sub">View / cancel bookings (admin only)</div>
+      </div>
+      <div class="actions">
+        <span id="statusPill" class="pill warn">🔒 Locked</span>
+        <button class="btn" id="refreshBtn">Refresh</button>
+        <button class="btn danger" id="logoutBtn" style="display:none;">Logout</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="tableWrap">
+        <table>
+          <thead>
+            <tr>
+              <th style="width:220px;">Slot</th>
+              <th style="width:160px;">Booked at</th>
+              <th>Name</th>
+              <th style="width:160px;">Student #</th>
+              <th>Email</th>
+              <th style="width:120px;">Action</th>
+            </tr>
+          </thead>
+          <tbody id="rows">
+            <tr><td class="empty" colspan="6">Please log in.</td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <!-- Login overlay -->
+  <div class="overlay" id="overlay">
+    <div class="loginCard">
+      <h2>Admin login</h2>
+
+      <div class="field">
+        <label for="pw">Password</label>
+        <input id="pw" type="password" placeholder="Admin password" autocomplete="current-password" />
+      </div>
+
+      <div class="loginActions">
+        <button class="btn primary" id="loginBtn">Login</button>
+      </div>
+
+      <div class="small" id="loginHint" style="margin-top:10px;"></div>
+    </div>
+  </div>
+
+  <div class="toast" id="toast">
+    <div class="row">
+      <div class="icon" id="tIcon">ℹ️</div>
+      <div style="flex:1">
+        <div class="t" id="tTitle">Notice</div>
+        <p class="m" id="tMsg"></p>
+      </div>
+      <div class="x" id="tClose">✕</div>
+    </div>
+  </div>
+
+  <script>
+    let toastTimer = null;
+    function showToast({ icon="ℹ️", title="Notice", message="", ms=3500 } = {}) {
+      const toast = document.getElementById("toast");
+      document.getElementById("tIcon").textContent = icon;
+      document.getElementById("tTitle").textContent = title;
+      document.getElementById("tMsg").textContent = message;
+      toast.classList.add("show");
+      clearTimeout(toastTimer);
+      toastTimer = setTimeout(() => toast.classList.remove("show"), ms);
+    }
+    document.getElementById("tClose").onclick = () => document.getElementById("toast").classList.remove("show");
+
+    const rowsEl = document.getElementById("rows");
+    const overlay = document.getElementById("overlay");
+    const pwEl = document.getElementById("pw");
+    const loginBtn = document.getElementById("loginBtn");
+    const refreshBtn = document.getElementById("refreshBtn");
+    const logoutBtn = document.getElementById("logoutBtn");
+    const statusPill = document.getElementById("statusPill");
+    const loginHint = document.getElementById("loginHint");
+
+    async function api(path, options = {}) {
+      return fetch(path, {
+        ...options,
+        credentials: "include",
+        headers: {
+          "Content-Type": "application/json",
+          ...(options.headers || {})
+        }
+      });
+    }
+
+    function setLocked(locked) {
+      if (locked) {
+        statusPill.className = "pill warn";
+        statusPill.textContent = "🔒 Locked";
+        logoutBtn.style.display = "none";
+      } else {
+        statusPill.className = "pill ok";
+        statusPill.textContent = "✅ Logged in";
+        logoutBtn.style.display = "";
+      }
+    }
+
+    function showLogin(show) {
+      overlay.classList.toggle("show", !!show);
+      loginHint.textContent = "";
+      if (show) setTimeout(() => pwEl.focus(), 50);
+    }
+
+    function fmt(v) {
+      if (!v) return "";
+      try {
+        const d = new Date(v);
+        if (!isNaN(d.getTime())) return d.toLocaleString();
+      } catch {}
+      return String(v);
+    }
+
+    function escapeHtml(s) {
+      return String(s ?? "").replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+    }
+
+    async function checkSession() {
+      try {
+        const r = await api("/api/admin/me", { method: "GET" });
+        return r.ok;
+      } catch {
+        return false;
+      }
+    }
+
+    async function loadBookings() {
+      rowsEl.innerHTML = '<tr><td class="empty" colspan="6">Loading…</td></tr>';
+      try {
+        const r = await api("/api/admin/bookings", { method: "GET", cache: "no-store" });
+        if (r.status === 401) {
+          setLocked(true);
+          showLogin(true);
+          rowsEl.innerHTML = '<tr><td class="empty" colspan="6">Please log in.</td></tr>';
+          return;
+        }
+        const data = await r.json();
+        if (!data.ok) throw new Error(data.error || "Failed");
+
+        if (!data.rows || data.rows.length === 0) {
+          rowsEl.innerHTML = '<tr><td class="empty" colspan="6">No bookings yet.</td></tr>';
+          return;
+        }
+
+        rowsEl.innerHTML = data.rows.map(b => {
+          const slot = escapeHtml(b.slot);
+          return `
+            <tr>
+              <td class="slot">${slot}</td>
+              <td class="small">${escapeHtml(fmt(b.booked_at || b.bookedAt))}</td>
+              <td>${escapeHtml(b.name || "")}</td>
+              <td class="small">${escapeHtml(b.student_no || b.studentNo || "")}</td>
+              <td class="small">${escapeHtml(b.email || "")}</td>
+              <td><button class="btn danger" data-cancel="${slot}">Cancel</button></td>
+            </tr>
+          `;
+        }).join("");
+
+        // attach cancel handlers
+        rowsEl.querySelectorAll("[data-cancel]").forEach(btn => {
+          btn.addEventListener("click", async () => {
+            const slot = btn.getAttribute("data-cancel");
+            if (!confirm(`Cancel booking for slot: ${slot}?`)) return;
+            btn.disabled = true;
+            try {
+              const r = await api(`/api/admin/cancel/${encodeURIComponent(slot)}`, { method: "DELETE" });
+              const j = await r.json().catch(() => ({}));
+              if (!r.ok || !j.ok) throw new Error(j.error || j.message || "Cancel failed");
+              showToast({ icon:"✅", title:"Cancelled", message: `Cancelled: ${slot}` });
+              await loadBookings();
+            } catch (e) {
+              showToast({ icon:"⚠️", title:"Error", message: String(e.message || e) });
+              btn.disabled = false;
+            }
+          });
+        });
+
+      } catch (e) {
+        showToast({ icon:"⚠️", title:"Error", message: "Could not load bookings." });
+        rowsEl.innerHTML = '<tr><td class="empty" colspan="6">Error loading bookings.</td></tr>';
+      }
+    }
+
+    async function login() {
+      const password = pwEl.value;
+      if (!password) {
+        loginHint.textContent = "Password required.";
+        return;
+      }
+      loginBtn.disabled = true;
+      loginHint.textContent = "";
+      try {
+        const r = await api("/api/admin/login", { method: "POST", body: JSON.stringify({ password }) });
+        const j = await r.json().catch(() => ({}));
+        if (!r.ok || !j.ok) throw new Error(j.error || "Login failed");
+        pwEl.value = "";
+        showLogin(false);
+        setLocked(false);
+        showToast({ icon:"✅", title:"Logged in", message:"Admin session active." });
+        await loadBookings();
+      } catch (e) {
+        loginHint.textContent = "Invalid password.";
+        showToast({ icon:"⛔", title:"Login failed", message:"Invalid password." });
+      } finally {
+        loginBtn.disabled = false;
+      }
+    }
+
+    loginBtn.addEventListener("click", login);
+    pwEl.addEventListener("keydown", (e) => { if (e.key === "Enter") login(); });
+
+    refreshBtn.addEventListener("click", loadBookings);
+    logoutBtn.addEventListener("click", async () => {
+      try { await api("/api/admin/logout", { method: "POST" }); } catch {}
+      setLocked(true);
+      showLogin(true);
+      rowsEl.innerHTML = '<tr><td class="empty" colspan="6">Please log in.</td></tr>';
+      showToast({ icon:"👋", title:"Logged out", message:"Session cleared." });
+    });
+
+    // boot
+    (async () => {
+      const ok = await checkSession();
+      setLocked(!ok);
+      showLogin(!ok);
+      if (ok) await loadBookings();
+    })();
+  </script>
+</body>
+</html>

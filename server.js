@@ -677,7 +677,7 @@ function requireAdmin(req, res, next) {
 
 // serve login page (public)
 app.get("/admin-login", (req, res) => {
-  res.sendFile(path.join(__dirname, "public", "admin.secure.html"));
+  res.sendFile(path.join(__dirname, "public", "admin.html"));
 });
 
 // serve admin panel (protected)

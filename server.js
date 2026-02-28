@@ -249,6 +249,21 @@ function normStudentNo(v) {
     .replace(/\s+/g, "") // remove spaces inside
     .toUpperCase(); // case-insensitive match
 }
+
+// ---------- Slot time helpers (treat slots as Europe/Istanbul, UTC+03:00) ----------
+function parseSlotToDate(slot) {
+  const parts = String(slot || "").split("-");
+  if (parts.length < 5) return null;
+  const [y, m, d, hh, mm] = parts;
+  const dt = new Date(`${y}-${m}-${d}T${hh}:${mm}:00+03:00`);
+  return Number.isNaN(dt.getTime()) ? null : dt;
+}
+function isPastSlot(slot) {
+  const dt = parseSlotToDate(slot);
+  if (!dt) return false;
+  return dt.getTime() < Date.now();
+}
+
 function loadAllowedStudentNos() {
   try {
     const raw = fs.readFileSync(allowedCsvPath, "utf8");
@@ -355,8 +370,7 @@ app.post("/api/admin/login", async (req, res) => {
 
   const cookieValue = makeAdminCookieValue();
 
-  // For HTTPS sites (like Render + custom domain), Secure should be set.
-  // SameSite=Lax works well for same-site navigation while protecting from CSRF on most cross-site contexts.
+  // Always Secure on HTTPS domains (Render + custom domain)
   res.setHeader(
     "Set-Cookie",
     `${ADMIN_COOKIE_NAME}=${encodeURIComponent(cookieValue)}; Path=/; HttpOnly; SameSite=Lax; Secure; Max-Age=${Math.floor(
@@ -368,9 +382,10 @@ app.post("/api/admin/login", async (req, res) => {
 });
 
 app.post("/api/admin/logout", (req, res) => {
+  const isProd = process.env.NODE_ENV === "production";
   res.setHeader(
     "Set-Cookie",
-    `${ADMIN_COOKIE_NAME}=; Path=/; HttpOnly; SameSite=Lax; Secure; Max-Age=0`
+    `${ADMIN_COOKIE_NAME}=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0${isProd ? "; Secure" : ""}`
   );
   return res.json({ ok: true });
 });
@@ -404,6 +419,10 @@ app.post("/api/book", async (req, res) => {
 
   if (!slot || !name || !studentNo || !email) {
     return res.status(400).json({ ok: false, error: "Missing fields" });
+  }
+
+  if (isPastSlot(slot)) {
+    return res.status(400).json({ ok: false, error: "past_slot" });
   }
 
   const sn = normStudentNo(studentNo);
@@ -520,6 +539,7 @@ app.post("/api/manage/change", async (req, res) => {
 
   if (!token) return res.status(400).json({ ok: false, error: "missing_token" });
   if (!newSlot) return res.status(400).json({ ok: false, error: "missing_newSlot" });
+  if (isPastSlot(newSlot)) return res.status(400).json({ ok: false, error: "past_slot" });
 
   const client = await pool.connect();
   try {
@@ -668,25 +688,29 @@ app.get("/api/all-slots", (req, res) => {
    Hide admin page + protect /admin
    ========================= */
 
+// directory served statically
 const PUBLIC_DIR = path.join(__dirname, "public");
 
-// For page routing, redirect instead of JSON 401.
-function requireAdminPage(req, res, next) {
-  const cookies = parseCookies(req);
-  const v = verifyAdminCookieValue(cookies[ADMIN_COOKIE_NAME]);
-  if (!v.ok) return res.redirect("/admin-login");
-  return next();
+// Admin session guard (requires valid cookie)
+function requireAdmin(req, res, next) {
+  const token = req.cookies?.admin_session;
+  if (!token) return res.redirect("/admin-login");
+
+  try {
+    const decoded = jwt.verify(token, ADMIN_SESSION_SECRET);
+    if (decoded?.role === "admin") return next();
+  } catch (e) {
+    // ignore
+  }
+  return res.redirect("/admin-login");
 }
 
-// Block direct access to the static admin file name
-app.get("/admin.html", (req, res) => res.status(404).send("Not found"));
-
-// Serve admin panel only via protected route
-app.get("/admin", requireAdminPage, (req, res) => {
-  return res.sendFile(path.join(PUBLIC_DIR, "admin.html"));
+// Block direct access to the file names (even if they exist in /public)
+app.get(["/admin.html", "/admin.secure.html"], (req, res) => {
+  return res.status(404).send("Not found");
 });
 
-// Simple login page served by backend (no extra file needed)
+// Lightweight login page served by the backend (not a static file)
 app.get("/admin-login", (req, res) => {
   res.setHeader("Content-Type", "text/html; charset=utf-8");
   return res.send(`<!doctype html>
@@ -696,13 +720,12 @@ app.get("/admin-login", (req, res) => {
   <meta name="viewport" content="width=device-width,initial-scale=1" />
   <title>Admin Login</title>
   <style>
-    body{font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;display:flex;min-height:100vh;align-items:center;justify-content:center;margin:0;padding:24px;background:#0b1220}
-    .card{max-width:420px;width:100%;background:#111a2e;color:#e5e7eb;border:1px solid rgba(255,255,255,.12);border-radius:16px;padding:20px;box-shadow:0 10px 30px rgba(0,0,0,.35)}
+    body{font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;display:flex;min-height:100vh;align-items:center;justify-content:center;margin:0;padding:24px;background:#f6f7fb}
+    .card{max-width:420px;width:100%;background:#fff;border-radius:16px;padding:20px;box-shadow:0 10px 30px rgba(0,0,0,.08)}
     h1{font-size:18px;margin:0 0 12px}
-    input,button{width:100%;padding:12px 14px;border-radius:10px;border:1px solid rgba(255,255,255,.16);font-size:14px;background:rgba(255,255,255,.06);color:#e5e7eb}
-    button{margin-top:10px;cursor:pointer;font-weight:700}
-    .err{color:#fecaca;margin-top:10px;min-height:18px;font-size:13px}
-    .hint{color:#9ca3af;font-size:12px;margin-top:8px;line-height:1.4}
+    input,button{width:100%;padding:12px 14px;border-radius:10px;border:1px solid #d8dde7;font-size:14px}
+    button{margin-top:10px;cursor:pointer}
+    .err{color:#b00020;margin-top:10px;min-height:18px;font-size:13px}
   </style>
 </head>
 <body>
@@ -710,34 +733,28 @@ app.get("/admin-login", (req, res) => {
     <h1>Admin login</h1>
     <form id="f">
       <input id="pw" type="password" placeholder="Password" autocomplete="current-password" required />
-      <button id="btn" type="submit">Sign in</button>
+      <button type="submit">Sign in</button>
       <div class="err" id="err"></div>
-      <div class="hint">This sets a short-lived, HttpOnly session cookie.</div>
     </form>
   </div>
 <script>
   const f = document.getElementById('f');
   const pw = document.getElementById('pw');
   const err = document.getElementById('err');
-  const btn = document.getElementById('btn');
-
   f.addEventListener('submit', async (e) => {
     e.preventDefault();
     err.textContent = '';
-    btn.disabled = true;
     try {
       const r = await fetch('/api/admin/login', {
         method: 'POST',
         headers: {'Content-Type':'application/json'},
-        credentials: 'include',
         body: JSON.stringify({ password: pw.value })
       });
       const j = await r.json().catch(()=> ({}));
-      if (!r.ok || !j.ok) throw new Error(j.error || 'Login failed');
+      if (!r.ok) throw new Error(j.error || 'Login failed');
       location.href = '/admin';
     } catch (e) {
       err.textContent = e.message || String(e);
-      btn.disabled = false;
     }
   });
 </script>
@@ -745,8 +762,14 @@ app.get("/admin-login", (req, res) => {
 </html>`);
 });
 
-// Static files (must be after /admin and /admin-login routes)
-app.use(express.static(PUBLIC_DIR));
+// Protected admin panel route
+app.get("/admin", requireAdmin, (req, res) => {
+  // Serve your admin UI file from /public, but only through this route
+  return res.sendFile(path.join(PUBLIC_DIR, "admin.html"));
+});
+
+// Static files
+app.use(express.static(path.join(__dirname, "public")));
 
 // Self-ping (Render)
 const SELF_URL = process.env.RENDER_EXTERNAL_URL;

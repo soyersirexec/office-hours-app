@@ -84,11 +84,6 @@ document.addEventListener("DOMContentLoaded", async () => {
 
   if (!grid || !prevBtn || !nextBtn || !pageInfo) return;
 
-  // Capture original classes so polling can re-enable slots cleanly
-  document.querySelectorAll(".slot[data-slot]").forEach((btn) => {
-    if (!btn.dataset.origClass) btn.dataset.origClass = btn.className;
-  });
-
   function getISOWeekKey(yyyy_mm_dd) {
     const [y, m, d] = yyyy_mm_dd.split("-").map(Number);
     const date = new Date(Date.UTC(y, m - 1, d));
@@ -124,21 +119,6 @@ document.addEventListener("DOMContentLoaded", async () => {
       strong ? "opacity-80" : "opacity-70"
     );
     btn.disabled = true;
-  }
-
-  function enableSlot(btn) {
-    // Do not re-enable slots that were disabled because they are in the past
-    if (btn.dataset.locked === "past") return;
-
-    // Restore original classes if captured
-    if (btn.dataset.origClass) {
-      btn.className = btn.dataset.origClass;
-    } else {
-      // Fallback: remove disabled styling
-      btn.classList.remove("bg-gray-400","bg-gray-200","cursor-not-allowed","opacity-80","opacity-70","booked-slot");
-      btn.classList.add("bg-emerald-500","hover:bg-emerald-600","active:scale-95");
-    }
-    btn.disabled = false;
   }
 
   function showToastNear(element, message) {
@@ -240,28 +220,88 @@ document.addEventListener("DOMContentLoaded", async () => {
     .join(" ");
 }
   // ---- Disable past dates ----
-  (function disablePastDates() {
-  const todayDate = new Date();
-  todayDate.setHours(0, 0, 0, 0);
+  
+  // ---- Tabs: Available / Previous ----
+  const availableTab = document.getElementById("tab-available");
+  const previousTab = document.getElementById("tab-previous");
+  const tabBtnAvailable = document.getElementById("tabBtnAvailable");
+  const tabBtnPrevious = document.getElementById("tabBtnPrevious");
+  const previousCountEl = document.getElementById("previousCount");
+  const previousGrid = document.getElementById("previousDaysGrid");
+  const availableEmpty = document.getElementById("availableEmpty");
+  const previousEmpty = document.getElementById("previousEmpty");
 
-  document.querySelectorAll(".day-card").forEach((card) => {
-    const first = card.querySelector(".slot[data-slot]");
-    if (!first) return;
+  let activeTabName = "available"; // ✅ always start on Available
 
-    const d = first.dataset.slot.slice(0, 10);
-    const [y, m, day] = d.split("-").map(Number);
-    const cardDate = new Date(y, m - 1, day);
-    cardDate.setHours(0, 0, 0, 0);
+  function setActiveTab(name) {
+    activeTabName = name === "previous" ? "previous" : "available";
 
-    if (cardDate < todayDate) {
-      // disable all slots
-      card.querySelectorAll(".slot").forEach((btn) => { btn.dataset.locked = "past"; disableSlot(btn, false); });
+    if (availableTab) availableTab.classList.toggle("hidden", activeTabName !== "available");
+    if (previousTab) previousTab.classList.toggle("hidden", activeTabName !== "previous");
 
-      // grey out the whole card visually
-      card.classList.add("past-day");
+    // button styles
+    if (tabBtnAvailable) {
+      tabBtnAvailable.classList.toggle("border-blue-700", activeTabName === "available");
+      tabBtnAvailable.classList.toggle("text-blue-700", activeTabName === "available");
+      tabBtnAvailable.classList.toggle("border-transparent", activeTabName !== "available");
+      tabBtnAvailable.classList.toggle("text-gray-600", activeTabName !== "available");
     }
-  });
-})();
+    if (tabBtnPrevious) {
+      tabBtnPrevious.classList.toggle("border-blue-700", activeTabName === "previous");
+      tabBtnPrevious.classList.toggle("text-blue-700", activeTabName === "previous");
+      tabBtnPrevious.classList.toggle("border-transparent", activeTabName !== "previous");
+      tabBtnPrevious.classList.toggle("text-gray-600", activeTabName !== "previous");
+    }
+
+    // reset paging when switching tabs
+    page = 1;
+    render();
+    document.getElementById("appointmentsSection")?.scrollIntoView({ behavior: "smooth", block: "start" });
+  }
+
+  tabBtnAvailable?.addEventListener("click", () => setActiveTab("available"));
+  tabBtnPrevious?.addEventListener("click", () => setActiveTab("previous"));
+
+  // ---- Move past days into "Previous" tab + disable them ----
+  (function movePastDays() {
+    const todayDate = new Date();
+    todayDate.setHours(0, 0, 0, 0);
+
+    const allCards = Array.from(document.querySelectorAll(".day-card"));
+    let moved = 0;
+
+    allCards.forEach((card) => {
+      const first = card.querySelector(".slot[data-slot]");
+      if (!first) return;
+
+      const d = first.dataset.slot.slice(0, 10);
+      const [y, m, day] = d.split("-").map(Number);
+      const cardDate = new Date(y, m - 1, day);
+      cardDate.setHours(0, 0, 0, 0);
+
+      if (cardDate < todayDate) {
+        // disable all slots on this past day
+        card.querySelectorAll(".slot").forEach((btn) => disableSlot(btn, false));
+        card.classList.add("past-day");
+
+        // move to previous grid (if present)
+        if (previousGrid) {
+          previousGrid.appendChild(card);
+          moved++;
+        }
+      }
+    });
+
+    if (previousCountEl) previousCountEl.textContent = String(moved);
+
+    // empty states
+    const availableCount = document.getElementById("daysGrid")?.querySelectorAll(".day-card").length || 0;
+    if (availableEmpty) availableEmpty.classList.toggle("hidden", availableCount !== 0);
+
+    const previousCount = previousGrid?.querySelectorAll(".day-card").length || 0;
+    if (previousEmpty) previousEmpty.classList.toggle("hidden", previousCount !== 0);
+  })();
+
 
   // ---- Load bookings from server + apply on UI ----
   let serverBooked = {};
@@ -283,7 +323,6 @@ document.addEventListener("DOMContentLoaded", async () => {
   const booking = serverBooked[btn.dataset.slot];
 
   if (booking) {
-    btn.dataset.locked = "booked";
     disableSlot(btn, true);
     btn.classList.add("booked-slot");
 
@@ -293,56 +332,10 @@ document.addEventListener("DOMContentLoaded", async () => {
   btn.title = "Booked";
 }
   } else {
-    // If this slot was previously disabled due to being booked, re-enable it
-    if (btn.dataset.locked === "booked") {
-      delete btn.dataset.locked;
-      enableSlot(btn);
-    }
-    btn.classList.remove("booked-slot");
+    btn.classList.remove("booked-slot"); // 🔥 ensure free slots stay clean
     btn.title = "";
   }
 });
-
-
-  // ---- Live availability polling (auto-updates without refresh) ----
-  let lastAvailabilitySig = "";
-  async function refreshAvailability({ silent = true } = {}) {
-    const latest = await loadBookedFromServer();
-    // lightweight signature to skip unnecessary DOM work
-    const sig = JSON.stringify(Object.keys(latest).sort());
-    if (sig === lastAvailabilitySig) return;
-
-    lastAvailabilitySig = sig;
-    serverBooked = latest;
-
-    // Apply updates to UI
-    document.querySelectorAll(".slot[data-slot]").forEach((btn) => {
-      const booking = serverBooked[btn.dataset.slot];
-      if (booking) {
-        if (btn.dataset.locked !== "past") btn.dataset.locked = "booked";
-        disableSlot(btn, true);
-        btn.classList.add("booked-slot");
-        btn.title = "Booked";
-      } else {
-        if (btn.dataset.locked === "booked") {
-          delete btn.dataset.locked;
-          enableSlot(btn);
-        }
-        btn.classList.remove("booked-slot");
-        btn.title = "";
-      }
-    });
-  }
-
-  // Prime signature from initial load
-  lastAvailabilitySig = JSON.stringify(Object.keys(serverBooked).sort());
-
-  // Poll every 12 seconds (adjust if you want)
-  const POLL_MS = 12000;
-  setInterval(() => {
-    refreshAvailability({ silent: true });
-  }, POLL_MS);
-
 
   // ---- Click booking ----
   document.querySelectorAll(".slot[data-slot]").forEach((slot) => {
@@ -449,8 +442,7 @@ slot.title = `Booked by: ${maskName(profile.name)}`;
   }
 
   // Success
-  serverBooked[slot.dataset.slot] = { bookedAt: Date.now() };
-  slot.dataset.locked = "booked";
+  serverBooked[slot.dataset.slot] = { bookedAt: Date.now(), name: profile.name };
   slot.title = `Booked by: ${profile.name}`;
   disableSlot(slot, true);
 
@@ -463,24 +455,43 @@ slot.title = `Booked by: ${maskName(profile.name)}`;
 });
 });
 
-  // ---- Pagination by day cards (no week grouping) ----
-  const dayCards = Array.from(grid.querySelectorAll(".day-card"));
+  // ---- Pagination by day cards (Available / Previous) ----
   const perPage = 2;
   let page = 1;
-  const totalPages = Math.max(1, Math.ceil(dayCards.length / perPage));
+
+  function getActiveGrid() {
+    return activeTabName === "previous" && previousGrid ? previousGrid : grid;
+  }
+
+  function getActiveCards() {
+    const g = getActiveGrid();
+    if (!g) return [];
+    return Array.from(g.querySelectorAll(".day-card"));
+  }
 
   function render() {
+    const cards = getActiveCards();
+    const totalPages = Math.max(1, Math.ceil(cards.length / perPage));
+
+    if (page > totalPages) page = totalPages;
+
     const start = (page - 1) * perPage;
     const end = start + perPage;
 
-    dayCards.forEach((card, i) => {
+    cards.forEach((card, i) => {
       card.style.display = i >= start && i < end ? "" : "none";
     });
 
-    pageInfo.textContent = `Page ${page} / ${totalPages}`;
+    // hide cards in the non-active grid (so switching tabs doesn't show stale page)
+    const otherGrid = getActiveGrid() === grid ? previousGrid : grid;
+    if (otherGrid) otherGrid.querySelectorAll(".day-card").forEach((c) => (c.style.display = ""));
 
-    prevBtn.disabled = page === 1;
-    nextBtn.disabled = page === totalPages;
+    // pager text
+    pageInfo.textContent = cards.length ? `Page ${page} / ${totalPages}` : "";
+
+    const disablePager = cards.length === 0;
+    prevBtn.disabled = disablePager || page === 1;
+    nextBtn.disabled = disablePager || page === totalPages;
 
     prevBtn.classList.toggle("opacity-50", prevBtn.disabled);
     prevBtn.classList.toggle("cursor-not-allowed", prevBtn.disabled);
@@ -493,18 +504,21 @@ slot.title = `Booked by: ${maskName(profile.name)}`;
       page--;
       render();
       document.getElementById("appointmentsSection")
-  ?.scrollIntoView({ behavior: "smooth", block: "start" });
+        ?.scrollIntoView({ behavior: "smooth", block: "start" });
     }
   });
 
   nextBtn.addEventListener("click", () => {
+    const cards = getActiveCards();
+    const totalPages = Math.max(1, Math.ceil(cards.length / perPage));
     if (page < totalPages) {
       page++;
       render();
       document.getElementById("appointmentsSection")
-  ?.scrollIntoView({ behavior: "smooth", block: "start" });
+        ?.scrollIntoView({ behavior: "smooth", block: "start" });
     }
   });
+
 function openCheckModal() {
   return new Promise((resolve) => {
     const modal = document.getElementById("checkModal");

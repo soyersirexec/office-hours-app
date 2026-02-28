@@ -81,6 +81,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   const prevBtn = document.getElementById("prevBtn");
   const nextBtn = document.getElementById("nextBtn");
   const pageInfo = document.getElementById("pageInfo");
+  const pagerWrap = document.getElementById("pagerWrap");
 
   if (!grid || !prevBtn || !nextBtn || !pageInfo) return;
 
@@ -263,7 +264,7 @@ document.addEventListener("DOMContentLoaded", async () => {
   tabBtnPrevious?.addEventListener("click", () => setActiveTab("previous"));
 
   // ---- Move past days into "Previous" tab + disable them ----
-  (function movePastDays() {
+  function movePastDays() {
     const todayDate = new Date();
     todayDate.setHours(0, 0, 0, 0);
 
@@ -292,15 +293,22 @@ document.addEventListener("DOMContentLoaded", async () => {
       }
     });
 
-    if (previousCountEl) previousCountEl.textContent = String(moved);
+    // count after move
+    const previousCount = previousGrid?.querySelectorAll(".day-card").length || 0;
+    if (previousCountEl) previousCountEl.textContent = String(previousCount);
+
+    // hide Previous tab when empty
+    if (tabBtnPrevious) tabBtnPrevious.classList.toggle("hidden", previousCount === 0);
+    if (activeTabName === "previous" && previousCount === 0) setActiveTab("available");
 
     // empty states
     const availableCount = document.getElementById("daysGrid")?.querySelectorAll(".day-card").length || 0;
     if (availableEmpty) availableEmpty.classList.toggle("hidden", availableCount !== 0);
 
-    const previousCount = previousGrid?.querySelectorAll(".day-card").length || 0;
-    if (previousEmpty) previousEmpty.classList.toggle("hidden", previousCount !== 0);
-  })();
+    const previousCount2 = previousGrid?.querySelectorAll(".day-card").length || 0;
+    if (previousEmpty) previousEmpty.classList.toggle("hidden", previousCount2 !== 0);
+  }
+  movePastDays();
 
 
   // ---- Load bookings from server + apply on UI ----
@@ -490,6 +498,7 @@ slot.title = `Booked by: ${maskName(profile.name)}`;
     pageInfo.textContent = cards.length ? `Page ${page} / ${totalPages}` : "";
 
     const disablePager = cards.length === 0;
+    if (pagerWrap) pagerWrap.classList.toggle("hidden", disablePager);
     prevBtn.disabled = disablePager || page === 1;
     nextBtn.disabled = disablePager || page === totalPages;
 

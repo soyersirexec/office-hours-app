@@ -8,79 +8,94 @@ const crypto = require("crypto");
 
 const app = express();
 const PORT = process.env.PORT || 3000;
-app.set("trust proxy", 1);
 
 // Recommended: set ADMIN_PASSWORD in Render env vars instead of hardcoding
-const ADMIN_PASSWORD = String(process.env.ADMIN_PASSWORD || "CHANGE_ME_IN_RENDER_ENV").trim();
+const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || "CHANGE_ME_IN_RENDER_ENV";
 
-// Session cookie signing secret (set ADMIN_SESSION_SECRET in env for stable sessions)
-const ADMIN_SESSION_SECRET =
-  process.env.ADMIN_SESSION_SECRET ||
-  crypto.createHash("sha256").update(String(ADMIN_PASSWORD)).digest("hex");
-
+// Admin session signing (HMAC). Set ADMIN_SESSION_SECRET in env (recommended).
+const ADMIN_SESSION_SECRET = (process.env.ADMIN_SESSION_SECRET || ADMIN_PASSWORD || "dev").trim();
 const ADMIN_COOKIE_NAME = "admin_session";
-const ADMIN_SESSION_MS = 8 * 60 * 60 * 1000; // 8 hours
+const ADMIN_SESSION_MS = 1000 * 60 * 60 * 8; // 8 hours
 
-function base64urlEncode(buf) {
-  return Buffer.from(buf).toString("base64").replace(/=/g, "").replace(/\+/g, "-").replace(/\//g, "_");
-}
-function base64urlDecode(str) {
-  const s = String(str).replace(/-/g, "+").replace(/_/g, "/");
-  const pad = s.length % 4 ? "=".repeat(4 - (s.length % 4)) : "";
-  return Buffer.from(s + pad, "base64");
-}
+// Render/HTTPS proxy support
+app.set("trust proxy", 1);
 
+// Basic cookie parser (no extra dependency)
 function parseCookies(req) {
   const header = req.headers.cookie || "";
   const out = {};
-  header.split(";").forEach((part) => {
-    const idx = part.indexOf("=");
-    if (idx === -1) return;
-    const k = part.slice(0, idx).trim();
-    const v = part.slice(idx + 1).trim();
+  header.split(";").forEach(part => {
+    const i = part.indexOf("=");
+    if (i === -1) return;
+    const k = part.slice(0, i).trim();
+    const v = part.slice(i + 1).trim();
     if (!k) return;
     out[k] = decodeURIComponent(v);
   });
   return out;
 }
 
-function signAdminPayload(payloadB64) {
-  return crypto.createHmac("sha256", ADMIN_SESSION_SECRET).update(payloadB64).digest("hex");
+function b64url(buf) {
+  return Buffer.from(buf).toString("base64").replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, "");
 }
 
-function makeAdminCookieValue() {
-  const payload = { exp: Date.now() + ADMIN_SESSION_MS };
-  const payloadB64 = base64urlEncode(JSON.stringify(payload));
-  const sig = signAdminPayload(payloadB64);
+function signAdminPayload(payloadObj) {
+  const payload = JSON.stringify(payloadObj);
+  const payloadB64 = b64url(payload);
+  const sig = crypto
+    .createHmac("sha256", ADMIN_SESSION_SECRET)
+    .update(payloadB64)
+    .digest("base64")
+    .replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, "");
   return `${payloadB64}.${sig}`;
 }
 
-function verifyAdminCookieValue(value) {
-  if (!value || typeof value !== "string") return { ok: false };
-  const [payloadB64, sig] = value.split(".");
-  if (!payloadB64 || !sig) return { ok: false };
-  const expected = signAdminPayload(payloadB64);
-  // constant-time compare
-  const a = Buffer.from(expected, "hex");
-  const b = Buffer.from(sig, "hex");
-  if (a.length !== b.length) return { ok: false };
-  if (!crypto.timingSafeEqual(a, b)) return { ok: false };
+function verifyAdminCookieValue(val) {
+  if (!val || typeof val !== "string") return null;
+  const parts = val.split(".");
+  if (parts.length !== 2) return null;
+  const [payloadB64, sig] = parts;
+  const expected = crypto
+    .createHmac("sha256", ADMIN_SESSION_SECRET)
+    .update(payloadB64)
+    .digest("base64")
+    .replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, "");
+  if (!crypto.timingSafeEqual(Buffer.from(sig), Buffer.from(expected))) return null;
 
   try {
-    const payload = JSON.parse(base64urlDecode(payloadB64).toString("utf8"));
-    if (!payload || typeof payload.exp !== "number") return { ok: false };
-    if (Date.now() > payload.exp) return { ok: false, expired: true };
-    return { ok: true, payload };
+    const json = Buffer.from(payloadB64.replace(/-/g, "+").replace(/_/g, "/"), "base64").toString("utf8");
+    const payload = JSON.parse(json);
+    if (!payload || payload.role !== "admin") return null;
+    if (typeof payload.exp !== "number" || Date.now() > payload.exp) return null;
+    return payload;
   } catch {
-    return { ok: false };
+    return null;
   }
 }
 
 function requireAdmin(req, res, next) {
   const cookies = parseCookies(req);
-  const v = verifyAdminCookieValue(cookies[ADMIN_COOKIE_NAME]);
-  if (!v.ok) return res.status(401).json({ ok: false, error: "unauthorized" });
-  return next();
+  const payload = verifyAdminCookieValue(cookies[ADMIN_COOKIE_NAME]);
+  if (!payload) return res.status(401).json({ ok: false, error: "unauthorized" });
+  req.admin = payload;
+  next();
+}
+
+// Slot parsing helpers (interprets slot as Europe/Istanbul time, +03:00)
+function slotToDate(slot) {
+  // slot format: YYYY-MM-DD-HH-MM
+  const m = /^\d{4}-\d{2}-\d{2}-\d{2}-\d{2}$/.exec(String(slot || ""));
+  if (!m) return null;
+  const date = slot.slice(0, 10);
+  const time = slot.slice(11).replace("-", ":");
+  const d = new Date(`${date}T${time}:00+03:00`);
+  return Number.isNaN(d.getTime()) ? null : d;
+}
+
+function isPastSlot(slot) {
+  const d = slotToDate(slot);
+  if (!d) return false;
+  return d.getTime() < Date.now();
 }
 
 // ===== Resend email (no SMTP) =====
@@ -249,21 +264,6 @@ function normStudentNo(v) {
     .replace(/\s+/g, "") // remove spaces inside
     .toUpperCase(); // case-insensitive match
 }
-
-// ---------- Slot time helpers (treat slots as Europe/Istanbul, UTC+03:00) ----------
-function parseSlotToDate(slot) {
-  const parts = String(slot || "").split("-");
-  if (parts.length < 5) return null;
-  const [y, m, d, hh, mm] = parts;
-  const dt = new Date(`${y}-${m}-${d}T${hh}:${mm}:00+03:00`);
-  return Number.isNaN(dt.getTime()) ? null : dt;
-}
-function isPastSlot(slot) {
-  const dt = parseSlotToDate(slot);
-  if (!dt) return false;
-  return dt.getTime() < Date.now();
-}
-
 function loadAllowedStudentNos() {
   try {
     const raw = fs.readFileSync(allowedCsvPath, "utf8");
@@ -344,85 +344,44 @@ const pool = new Pool({
 
 // Frontend uses this to mark booked slots on load
 
-// Public endpoint: return only which slots are booked (no personal data)
 app.get("/api/availability", async (req, res) => {
   try {
-    const { rows } = await pool.query("SELECT slot, booked_at FROM bookings");
-    const out = {};
-    for (const r of rows) out[r.slot] = { bookedAt: r.booked_at };
-    return res.json(out);
+    const { rows } = await pool.query("SELECT slot FROM bookings");
+    return res.json({ booked: rows.map(r => r.slot) });
   } catch (err) {
     console.error("AVAILABILITY GET ERROR:", err);
+    return res.json({ booked: [] });
+  }
+});
+
+app.get("/api/bookings", async (req, res) => {
+  try {
+    const { rows } = await pool.query("SELECT slot, booked_at, name, student_no, email FROM bookings");
+    const out = {};
+    for (const r of rows) {
+      out[r.slot] = {
+        bookedAt: r.booked_at,
+        name: r.name || null,
+        studentNo: r.student_no || null,
+        email: r.email || null,
+      };
+    }
+    return res.json(out);
+  } catch (err) {
+    console.error("BOOKINGS GET ERROR:", err);
     return res.json({});
-  }
-});
-
-// Admin endpoints (cookie-authenticated)
-app.get("/api/admin/me", requireAdmin, (req, res) => {
-  res.json({ ok: true });
-});
-
-app.post("/api/admin/login", async (req, res) => {
-  const { password } = req.body || {};
-  if (!password || String(password).trim() !== ADMIN_PASSWORD) {
-    return res.status(401).json({ ok: false, error: "unauthorized" });
-  }
-
-  const cookieValue = makeAdminCookieValue();
-
-  // Always Secure on HTTPS domains (Render + custom domain)
-  res.setHeader(
-    "Set-Cookie",
-    `${ADMIN_COOKIE_NAME}=${encodeURIComponent(cookieValue)}; Path=/; HttpOnly; SameSite=Lax; Secure; Max-Age=${Math.floor(
-      ADMIN_SESSION_MS / 1000
-    )}`
-  );
-
-  return res.json({ ok: true });
-});
-
-app.post("/api/admin/logout", (req, res) => {
-  const isProd = process.env.NODE_ENV === "production";
-  res.setHeader(
-    "Set-Cookie",
-    `${ADMIN_COOKIE_NAME}=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0${isProd ? "; Secure" : ""}`
-  );
-  return res.json({ ok: true });
-});
-
-app.get("/api/admin/bookings", requireAdmin, async (req, res) => {
-  try {
-    const { rows } = await pool.query(
-      "SELECT slot, booked_at, name, student_no, email FROM bookings ORDER BY slot ASC"
-    );
-    return res.json({ ok: true, rows });
-  } catch (err) {
-    console.error("ADMIN BOOKINGS GET ERROR:", err);
-    return res.status(500).json({ ok: false, error: "db_error" });
-  }
-});
-
-app.delete("/api/admin/cancel/:slot", requireAdmin, async (req, res) => {
-  const slot = decodeURIComponent(req.params.slot);
-  try {
-    const result = await pool.query("DELETE FROM bookings WHERE slot = $1 RETURNING slot", [slot]);
-    if (result.rowCount === 0) return res.status(404).json({ ok: false, error: "not_found" });
-    return res.json({ ok: true, slot: result.rows[0].slot });
-  } catch (err) {
-    console.error("ADMIN CANCEL ERROR:", err);
-    return res.status(500).json({ ok: false, error: "db_error" });
   }
 });
 
 app.post("/api/book", async (req, res) => {
   const { slot, name, studentNo, email } = req.body || {};
 
-  if (!slot || !name || !studentNo || !email) {
-    return res.status(400).json({ ok: false, error: "Missing fields" });
-  }
-
   if (isPastSlot(slot)) {
     return res.status(400).json({ ok: false, error: "past_slot" });
+  }
+
+  if (!slot || !name || !studentNo || !email) {
+    return res.status(400).json({ ok: false, error: "Missing fields" });
   }
 
   const sn = normStudentNo(studentNo);
@@ -539,7 +498,6 @@ app.post("/api/manage/change", async (req, res) => {
 
   if (!token) return res.status(400).json({ ok: false, error: "missing_token" });
   if (!newSlot) return res.status(400).json({ ok: false, error: "missing_newSlot" });
-  if (isPastSlot(newSlot)) return res.status(400).json({ ok: false, error: "past_slot" });
 
   const client = await pool.connect();
   try {
@@ -604,7 +562,10 @@ app.post("/api/manage/change", async (req, res) => {
 });
 
 // Optional: Admin cancel booking (password protected)
-app.delete("/api/cancel/:slot", requireAdmin, async (req, res) => {
+app.delete("/api/cancel/:slot", async (req, res) => {
+  const pw = req.query.pw;
+  if (pw !== ADMIN_PASSWORD) return res.status(401).json({ message: "Unauthorized" });
+
   const slot = decodeURIComponent(req.params.slot);
   try {
     const result = await pool.query("DELETE FROM bookings WHERE slot = $1 RETURNING slot", [slot]);
@@ -683,92 +644,78 @@ app.get("/api/all-slots", (req, res) => {
   return res.json(ALL_SLOTS);
 });
 
-
-/* =========================
-   Hide admin page + protect /admin
-   ========================= */
-
-// directory served statically
-const PUBLIC_DIR = path.join(__dirname, "public");
-
-// Admin session guard (requires valid cookie)
-function requireAdmin(req, res, next) {
-  const token = req.cookies?.admin_session;
-  if (!token) return res.redirect("/admin-login");
-
-  try {
-    const decoded = jwt.verify(token, ADMIN_SESSION_SECRET);
-    if (decoded?.role === "admin") return next();
-  } catch (e) {
-    // ignore
-  }
-  return res.redirect("/admin-login");
-}
-
-// Block direct access to the file names (even if they exist in /public)
-app.get(["/admin.html", "/admin.secure.html"], (req, res) => {
-  return res.status(404).send("Not found");
-});
-
-// Lightweight login page served by the backend (not a static file)
-app.get("/admin-login", (req, res) => {
-  res.setHeader("Content-Type", "text/html; charset=utf-8");
-  return res.send(`<!doctype html>
-<html>
-<head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>Admin Login</title>
-  <style>
-    body{font-family:system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;display:flex;min-height:100vh;align-items:center;justify-content:center;margin:0;padding:24px;background:#f6f7fb}
-    .card{max-width:420px;width:100%;background:#fff;border-radius:16px;padding:20px;box-shadow:0 10px 30px rgba(0,0,0,.08)}
-    h1{font-size:18px;margin:0 0 12px}
-    input,button{width:100%;padding:12px 14px;border-radius:10px;border:1px solid #d8dde7;font-size:14px}
-    button{margin-top:10px;cursor:pointer}
-    .err{color:#b00020;margin-top:10px;min-height:18px;font-size:13px}
-  </style>
-</head>
-<body>
-  <div class="card">
-    <h1>Admin login</h1>
-    <form id="f">
-      <input id="pw" type="password" placeholder="Password" autocomplete="current-password" required />
-      <button type="submit">Sign in</button>
-      <div class="err" id="err"></div>
-    </form>
-  </div>
-<script>
-  const f = document.getElementById('f');
-  const pw = document.getElementById('pw');
-  const err = document.getElementById('err');
-  f.addEventListener('submit', async (e) => {
-    e.preventDefault();
-    err.textContent = '';
-    try {
-      const r = await fetch('/api/admin/login', {
-        method: 'POST',
-        headers: {'Content-Type':'application/json'},
-        body: JSON.stringify({ password: pw.value })
-      });
-      const j = await r.json().catch(()=> ({}));
-      if (!r.ok) throw new Error(j.error || 'Login failed');
-      location.href = '/admin';
-    } catch (e) {
-      err.textContent = e.message || String(e);
-    }
-  });
-</script>
-</body>
-</html>`);
-});
-
-// Protected admin panel route
-app.get("/admin", requireAdmin, (req, res) => {
-  // Serve your admin UI file from /public, but only through this route
-  return res.sendFile(path.join(PUBLIC_DIR, "admin.html"));
-});
-
 // Static files
+
+// ===== Admin auth + routes =====
+app.post("/api/admin/login", (req, res) => {
+  const pw = String((req.body && req.body.password) || "").trim();
+  const expected = String(ADMIN_PASSWORD || "").trim();
+  if (!expected || expected === "CHANGE_ME_IN_RENDER_ENV") {
+    return res.status(500).json({ ok: false, error: "admin_password_not_set" });
+  }
+  if (pw !== expected) return res.status(401).json({ ok: false, error: "invalid_password" });
+
+  const cookieValue = signAdminPayload({ role: "admin", exp: Date.now() + ADMIN_SESSION_MS });
+  // Always Secure in production HTTPS; Render terminates TLS at proxy.
+  res.setHeader(
+    "Set-Cookie",
+    `${ADMIN_COOKIE_NAME}=${encodeURIComponent(cookieValue)}; Path=/; HttpOnly; SameSite=Lax; Secure; Max-Age=${Math.floor(
+      ADMIN_SESSION_MS / 1000
+    )}`
+  );
+  return res.json({ ok: true });
+});
+
+app.post("/api/admin/logout", (req, res) => {
+  res.setHeader(
+    "Set-Cookie",
+    `${ADMIN_COOKIE_NAME}=; Path=/; HttpOnly; SameSite=Lax; Secure; Max-Age=0`
+  );
+  return res.json({ ok: true });
+});
+
+app.get("/api/admin/me", (req, res) => {
+  const cookies = parseCookies(req);
+  const payload = verifyAdminCookieValue(cookies[ADMIN_COOKIE_NAME]);
+  if (!payload) return res.status(401).json({ ok: false });
+  return res.json({ ok: true });
+});
+
+app.get("/api/admin/bookings", requireAdmin, async (req, res) => {
+  try {
+    const { rows } = await pool.query("SELECT slot, booked_at, name, student_no, email FROM bookings");
+    return res.json(rows);
+  } catch (err) {
+    console.error("ADMIN BOOKINGS ERROR:", err);
+    return res.status(500).json({ ok: false, error: "db_error" });
+  }
+});
+
+app.delete("/api/admin/cancel/:slot", requireAdmin, async (req, res) => {
+  const slot = req.params.slot;
+  try {
+    await pool.query("DELETE FROM bookings WHERE slot=$1", [slot]);
+    return res.json({ ok: true, message: "Cancelled" });
+  } catch (err) {
+    console.error("ADMIN CANCEL ERROR:", err);
+    return res.status(500).json({ ok: false, error: "db_error" });
+  }
+});
+
+// Hide direct static access to admin.html; serve via /admin route only.
+app.get("/admin.html", (req, res) => res.status(404).send("Not found"));
+
+app.get("/admin", (req, res) => {
+  const cookies = parseCookies(req);
+  const payload = verifyAdminCookieValue(cookies[ADMIN_COOKIE_NAME]);
+  if (!payload) return res.redirect("/admin-login");
+  return res.sendFile(path.join(__dirname, "public", "admin.html"));
+});
+
+app.get("/admin-login", (req, res) => {
+  return res.sendFile(path.join(__dirname, "public", "admin-login.html"));
+});
+
 app.use(express.static(path.join(__dirname, "public")));
 
 // Self-ping (Render)

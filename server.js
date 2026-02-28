@@ -661,7 +661,30 @@ app.get("/api/all-slots", (req, res) => {
 
   return res.json(ALL_SLOTS);
 });
+const path = require("path");
 
+// middleware to check admin session
+function requireAdmin(req, res, next) {
+  if (req.cookies && req.cookies.admin_session) {
+    try {
+      const decoded = jwt.verify(req.cookies.admin_session, ADMIN_SESSION_SECRET);
+      if (decoded && decoded.role === "admin") {
+        return next();
+      }
+    } catch (err) {}
+  }
+  return res.redirect("/admin-login");
+}
+
+// serve login page (public)
+app.get("/admin-login", (req, res) => {
+  res.sendFile(path.join(__dirname, "public", "admin.secure.html"));
+});
+
+// serve admin panel (protected)
+app.get("/admin", requireAdmin, (req, res) => {
+  res.sendFile(path.join(__dirname, "private", "admin.html"));
+});
 // Static files
 app.use(express.static(path.join(__dirname, "public")));
 

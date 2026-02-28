@@ -8,6 +8,7 @@ const crypto = require("crypto");
 
 const app = express();
 const PORT = process.env.PORT || 3000;
+app.set("trust proxy", 1);
 
 // Recommended: set ADMIN_PASSWORD in Render env vars instead of hardcoding
 const ADMIN_PASSWORD = String(process.env.ADMIN_PASSWORD || "CHANGE_ME_IN_RENDER_ENV").trim();
@@ -356,14 +357,12 @@ app.post("/api/admin/login", async (req, res) => {
   const isProd = process.env.NODE_ENV === "production";
 
   res.setHeader(
-    "Set-Cookie",
-    `${ADMIN_COOKIE_NAME}=${encodeURIComponent(cookieValue)}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${Math.floor(
-      ADMIN_SESSION_MS / 1000
-    )}${isProd ? "; Secure" : ""}`
-  );
-
-  return res.json({ ok: true });
-});
+  "Set-Cookie",
+  `${ADMIN_COOKIE_NAME}=${encodeURIComponent(cookieValue)}; Path=/; HttpOnly; SameSite=Lax; Secure; Max-Age=${Math.floor(
+    ADMIN_SESSION_MS / 1000
+  )}`
+);
+return res.json({ ok: true });
 
 app.post("/api/admin/logout", (req, res) => {
   const isProd = process.env.NODE_ENV === "production";

@@ -12,98 +12,6 @@ const PORT = process.env.PORT || 3000;
 // Recommended: set ADMIN_PASSWORD in Render env vars instead of hardcoding
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || "CHANGE_ME_IN_RENDER_ENV";
 
-// Admin session signing (HMAC). Set ADMIN_SESSION_SECRET in env (recommended).
-const ADMIN_SESSION_SECRET = (process.env.ADMIN_SESSION_SECRET || ADMIN_PASSWORD || "dev").trim();
-const ADMIN_COOKIE_NAME = "admin_session";
-const ADMIN_SESSION_MS = 1000 * 60 * 60 * 8; // 8 hours
-
-// Render/HTTPS proxy support
-app.set("trust proxy", 1);
-
-// Basic cookie parser (no extra dependency)
-function parseCookies(req) {
-  const header = req.headers.cookie || "";
-  const out = {};
-  header.split(";").forEach(part => {
-    const i = part.indexOf("=");
-    if (i === -1) return;
-    const k = part.slice(0, i).trim();
-    const v = part.slice(i + 1).trim();
-    if (!k) return;
-    out[k] = decodeURIComponent(v);
-  });
-  return out;
-}
-
-function b64url(buf) {
-  return Buffer.from(buf).toString("base64").replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, "");
-}
-
-function signAdminPayload(payloadObj) {
-  const payload = JSON.stringify(payloadObj);
-  const payloadB64 = b64url(payload);
-  const sig = crypto
-    .createHmac("sha256", ADMIN_SESSION_SECRET)
-    .update(payloadB64)
-    .digest("base64")
-    .replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, "");
-  return `${payloadB64}.${sig}`;
-}
-
-function verifyAdminCookieValue(val) {
-  if (!val || typeof val !== "string") return null;
-  const parts = val.split(".");
-  if (parts.length !== 2) return null;
-  const [payloadB64, sig] = parts;
-  const expected = crypto
-    .createHmac("sha256", ADMIN_SESSION_SECRET)
-    .update(payloadB64)
-    .digest("base64")
-    .replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, "");
-  try {
-  // timingSafeEqual throws if buffer lengths differ
-  if (sig.length !== expected.length) return null;
-  if (!crypto.timingSafeEqual(Buffer.from(sig), Buffer.from(expected))) return null;
-} catch {
-  return null;
-}
-
-  try {
-    const json = Buffer.from(payloadB64.replace(/-/g, "+").replace(/_/g, "/"), "base64").toString("utf8");
-    const payload = JSON.parse(json);
-    if (!payload || payload.role !== "admin") return null;
-    if (typeof payload.exp !== "number" || Date.now() > payload.exp) return null;
-    return payload;
-  } catch {
-    return null;
-  }
-}
-
-function requireAdmin(req, res, next) {
-  const cookies = parseCookies(req);
-  const payload = verifyAdminCookieValue(cookies[ADMIN_COOKIE_NAME]);
-  if (!payload) return res.status(401).json({ ok: false, error: "unauthorized" });
-  req.admin = payload;
-  next();
-}
-
-// Slot parsing helpers (interprets slot as Europe/Istanbul time, +03:00)
-function slotToDate(slot) {
-  // slot format: YYYY-MM-DD-HH-MM
-  const m = /^\d{4}-\d{2}-\d{2}-\d{2}-\d{2}$/.exec(String(slot || ""));
-  if (!m) return null;
-  const date = slot.slice(0, 10);
-  const time = slot.slice(11).replace("-", ":");
-  const d = new Date(`${date}T${time}:00+03:00`);
-  return Number.isNaN(d.getTime()) ? null : d;
-}
-
-function isPastSlot(slot) {
-  const d = slotToDate(slot);
-  if (!d) return false;
-  return d.getTime() < Date.now();
-}
-
 // ===== Resend email (no SMTP) =====
 // Render env vars you must set:
 //   RESEND_API_KEY=your_resend_api_key
@@ -261,98 +169,125 @@ function escapeHtml(s) {
     .replaceAll('"', "&quot;")
     .replaceAll("'", "&#039;");
 }
-// ===== Google Calendar integration =====
+
+// ===== Google Calendar integration (Service Account) =====
+// Env vars:
+//   GOOGLE_CALENDAR_ID = calendar id (e.g. ...@group.calendar.google.com or yourname@gmail.com)
+//   GOOGLE_SERVICE_ACCOUNT_JSON_B64 = base64 of the entire service account JSON (recommended)
+//   (optional) GOOGLE_SERVICE_ACCOUNT_JSON = raw JSON (may break on some hosts due to formatting)
 const GOOGLE_CALENDAR_ID = process.env.GOOGLE_CALENDAR_ID;
 let _gcalClient = null;
 
-function loadServiceAccountCreds() {
-  const raw = process.env.GOOGLE_SERVICE_ACCOUNT_JSON;
-  const b64 = process.env.GOOGLE_SERVICE_ACCOUNT_JSON_B64;
+function _stripOuterQuotes(s) {
+  const t = String(s || "").trim();
+  if ((t.startsWith('"') && t.endsWith('"')) || (t.startsWith("'") && t.endsWith("'"))) {
+    return t.slice(1, -1);
+  }
+  return t;
+}
 
-  try {
-    if (raw && raw.trim().startsWith("{")) return JSON.parse(raw);
-  } catch {}
+function loadGoogleServiceAccountCreds() {
+  // Prefer base64 to avoid Render/newline issues
+  const b64 = process.env.GOOGLE_SERVICE_ACCOUNT_JSON_B64;
+  const raw = process.env.GOOGLE_SERVICE_ACCOUNT_JSON;
 
   try {
     if (b64 && b64.trim()) {
-      const decoded = Buffer.from(b64.trim(), "base64").toString("utf8");
+      const decoded = Buffer.from(_stripOuterQuotes(b64), "base64").toString("utf8");
       return JSON.parse(decoded);
     }
-  } catch {}
+  } catch (e) {
+    console.error("GCAL CREDS ERROR: could not parse GOOGLE_SERVICE_ACCOUNT_JSON_B64:", e?.message || e);
+  }
+
+  try {
+    const cleaned = _stripOuterQuotes(raw);
+    if (cleaned && cleaned.trim().startsWith("{")) return JSON.parse(cleaned);
+  } catch (e) {
+    console.error("GCAL CREDS ERROR: could not parse GOOGLE_SERVICE_ACCOUNT_JSON:", e?.message || e);
+  }
 
   return null;
 }
 
-function getGoogleClient() {
+function getGoogleCalendarClient() {
   if (_gcalClient) return _gcalClient;
 
-  const creds = loadServiceAccountCreds();
+  const creds = loadGoogleServiceAccountCreds();
   if (!creds) {
-    console.log("GCAL: disabled (missing GOOGLE_SERVICE_ACCOUNT_JSON or GOOGLE_SERVICE_ACCOUNT_JSON_B64)");
+    console.log("GCAL: disabled (missing creds env var)");
     return null;
   }
 
-  const pk = (creds.private_key || "").replace(/\\n/g, "\n").trim();
-  const ce = (creds.client_email || "").trim();
+  const ce = String(creds.client_email || "").trim();
+  const pk = String(creds.private_key || "").replace(/\\n/g, "\n").trim(); // normalize newlines
 
-  if (!pk || !ce) {
-    console.error("GCAL AUTH ERROR: missing client_email/private_key in creds");
+  if (!ce || !pk) {
+    console.error("GCAL AUTH ERROR: missing client_email/private_key in creds. Present keys:", Object.keys(creds || {}));
     return null;
   }
 
-  const { google } = require("googleapis");
-  const auth = new google.auth.JWT(
-    ce,
-    null,
-    pk,
-    ["https://www.googleapis.com/auth/calendar"]
-  );
+  let google;
+  try {
+    ({ google } = require("googleapis"));
+  } catch (e) {
+    console.error("GCAL: googleapis not installed. Run: npm i googleapis");
+    return null;
+  }
 
-  // Force token fetch so auth problems show clearly
-  auth.authorize().catch(e => console.error("GCAL AUTH ERROR:", e?.message || e));
+  const auth = new google.auth.JWT(ce, null, pk, ["https://www.googleapis.com/auth/calendar"]);
+
+  // Force token fetch so auth problems show clearly in Render logs
+  auth.authorize().catch((e) => console.error("GCAL AUTH ERROR:", e?.message || e));
 
   _gcalClient = google.calendar({ version: "v3", auth });
   return _gcalClient;
 }
 
 function slotToGCalTimes(slot) {
-  // slot format: YYYY-MM-DD-HH-MM
-  const date = slot.slice(0, 10);
-  const hh = slot.slice(11, 13);
-  const mm = slot.slice(14, 16);
+  // slot format: YYYY-MM-DD-HH-MM (Europe/Istanbul)
+  const date = String(slot).slice(0, 10);
+  const hh = String(slot).slice(11, 13);
+  const mm = String(slot).slice(14, 16);
 
-  const start = `${date}T${hh}:${mm}:00`;
-  const endDate = new Date(`${start}+03:00`);
-  endDate.setMinutes(endDate.getMinutes() + 45); // session duration
+  const startLocal = `${date}T${hh}:${mm}:00`;
+  const start = new Date(`${startLocal}+03:00`);
+  if (Number.isNaN(start.getTime())) return null;
+
+  const end = new Date(start.getTime());
+  end.setMinutes(end.getMinutes() + 45); // duration (minutes)
 
   const pad = (n) => String(n).padStart(2, "0");
-  const end = `${endDate.getFullYear()}-${pad(endDate.getMonth()+1)}-${pad(endDate.getDate())}T${pad(endDate.getHours())}:${pad(endDate.getMinutes())}:00`;
+  const endLocal = `${end.getFullYear()}-${pad(end.getMonth() + 1)}-${pad(end.getDate())}T${pad(end.getHours())}:${pad(end.getMinutes())}:00`;
 
-  return { start, end };
+  return { startLocal, endLocal };
 }
 
 async function createGoogleCalendarEvent({ slot, name, studentNo, email }) {
   try {
-    const calendar = getGoogleClient();
+    const calendar = getGoogleCalendarClient();
     if (!calendar || !GOOGLE_CALENDAR_ID) return;
 
-    const { start, end } = slotToGCalTimes(slot);
+    const times = slotToGCalTimes(slot);
+    if (!times) return;
 
     await calendar.events.insert({
       calendarId: GOOGLE_CALENDAR_ID,
       requestBody: {
         summary: `Speaking Center – ${name} (${studentNo})`,
         description: `Student: ${name}\nStudent No: ${studentNo}\nEmail: ${email}\nSlot: ${slot}`,
-        start: { dateTime: start, timeZone: "Europe/Istanbul" },
-        end: { dateTime: end, timeZone: "Europe/Istanbul" },
+        start: { dateTime: times.startLocal, timeZone: "Europe/Istanbul" },
+        end: { dateTime: times.endLocal, timeZone: "Europe/Istanbul" },
       },
     });
 
     console.log("GCAL: event created for", slot);
-  } catch (err) {
-    console.error("GCAL CREATE ERROR:", err?.message || err);
+  } catch (e) {
+    console.error("GCAL CREATE ERROR:", e?.message || e);
   }
 }
+
+
 // ---------- Allow-list (CSV of student numbers only) ----------
 const allowedCsvPath = path.join(__dirname, "allowed_students.csv");
 function normStudentNo(v) {
@@ -440,17 +375,6 @@ const pool = new Pool({
 // ---------- API ----------
 
 // Frontend uses this to mark booked slots on load
-
-app.get("/api/availability", async (req, res) => {
-  try {
-    const { rows } = await pool.query("SELECT slot FROM bookings");
-    return res.json({ booked: rows.map(r => r.slot) });
-  } catch (err) {
-    console.error("AVAILABILITY GET ERROR:", err);
-    return res.json({ booked: [] });
-  }
-});
-
 app.get("/api/bookings", async (req, res) => {
   try {
     const { rows } = await pool.query("SELECT slot, booked_at, name, student_no, email FROM bookings");
@@ -473,10 +397,6 @@ app.get("/api/bookings", async (req, res) => {
 app.post("/api/book", async (req, res) => {
   const { slot, name, studentNo, email } = req.body || {};
 
-  if (isPastSlot(slot)) {
-    return res.status(400).json({ ok: false, error: "past_slot" });
-  }
-
   if (!slot || !name || !studentNo || !email) {
     return res.status(400).json({ ok: false, error: "Missing fields" });
   }
@@ -484,9 +404,6 @@ app.post("/api/book", async (req, res) => {
   const sn = normStudentNo(studentNo);
   const nm = String(name).trim();
   const em = String(email).trim().toLowerCase();
-  if (!em.endsWith("@ankaramedipol.edu.tr")) {
-  return res.status(400).json({ ok: false, error: "invalid_email_domain" });
-}
 
   if (!ALLOWED_STUDENTS.has(sn)) {
     return res.status(403).json({ ok: false, error: "Not allowed" });
@@ -513,12 +430,6 @@ app.post("/api/book", async (req, res) => {
     sendManageLinkEmail({ to: em, name: nm, slot, token: manageToken }).catch((e) =>
       console.error("EMAIL SEND ERROR:", e)
     );
-    createGoogleCalendarEvent({
-  slot,
-  name: nm,
-  studentNo: sn,
-  email: em,
-});
 
     return res.json({ ok: true, manageToken });
   } catch (err) {
@@ -751,93 +662,6 @@ app.get("/api/all-slots", (req, res) => {
 });
 
 // Static files
-
-// ===== Admin auth + routes =====
-app.post("/api/admin/login", (req, res) => {
-  const pw = String((req.body && req.body.password) || "").trim();
-  const expected = String(ADMIN_PASSWORD || "").trim();
-  if (!expected || expected === "CHANGE_ME_IN_RENDER_ENV") {
-  console.error("ADMIN_PASSWORD is missing or still default. Set it in Render env and restart the service.");
-  return res.status(500).json({
-    ok: false,
-    error: "admin_password_not_set",
-    hint: "Set ADMIN_PASSWORD in your Render service Environment and restart/redeploy."
-  });
-}
-  if (pw !== expected) return res.status(401).json({ ok: false, error: "invalid_password" });
-
-  const cookieValue = signAdminPayload({ role: "admin", exp: Date.now() + ADMIN_SESSION_MS });
-  // Always Secure in production HTTPS; Render terminates TLS at proxy.
-  res.setHeader(
-    "Set-Cookie",
-    `${ADMIN_COOKIE_NAME}=${encodeURIComponent(cookieValue)}; Path=/; HttpOnly; SameSite=Lax; Secure; Max-Age=${Math.floor(
-      ADMIN_SESSION_MS / 1000
-    )}`
-  );
-  return res.json({ ok: true });
-});
-
-app.post("/api/admin/logout", (req, res) => {
-  res.setHeader(
-    "Set-Cookie",
-    `${ADMIN_COOKIE_NAME}=; Path=/; HttpOnly; SameSite=Lax; Secure; Max-Age=0`
-  );
-  return res.json({ ok: true });
-});
-
-app.get("/api/admin/me", (req, res) => {
-  const cookies = parseCookies(req);
-  const payload = verifyAdminCookieValue(cookies[ADMIN_COOKIE_NAME]);
-  if (!payload) return res.status(401).json({ ok: false });
-  return res.json({ ok: true });
-});
-
-// Simple health check for admin auth config (does not reveal secrets)
-app.get("/api/admin/ping", (req, res) => {
-  const expected = String(ADMIN_PASSWORD || "").trim();
-  return res.json({
-    ok: true,
-    adminPasswordConfigured: !!(expected && expected !== "CHANGE_ME_IN_RENDER_ENV"),
-    cookieName: ADMIN_COOKIE_NAME
-  });
-});
-
-
-app.get("/api/admin/bookings", requireAdmin, async (req, res) => {
-  try {
-    const { rows } = await pool.query("SELECT slot, booked_at, name, student_no, email FROM bookings");
-    return res.json(rows);
-  } catch (err) {
-    console.error("ADMIN BOOKINGS ERROR:", err);
-    return res.status(500).json({ ok: false, error: "db_error" });
-  }
-});
-
-app.delete("/api/admin/cancel/:slot", requireAdmin, async (req, res) => {
-  const slot = req.params.slot;
-  try {
-    await pool.query("DELETE FROM bookings WHERE slot=$1", [slot]);
-    return res.json({ ok: true, message: "Cancelled" });
-  } catch (err) {
-    console.error("ADMIN CANCEL ERROR:", err);
-    return res.status(500).json({ ok: false, error: "db_error" });
-  }
-});
-
-// Hide direct static access to admin.html; serve via /admin route only.
-app.get("/admin.html", (req, res) => res.status(404).send("Not found"));
-
-app.get("/admin", (req, res) => {
-  const cookies = parseCookies(req);
-  const payload = verifyAdminCookieValue(cookies[ADMIN_COOKIE_NAME]);
-  if (!payload) return res.redirect("/admin-login");
-  return res.sendFile(path.join(__dirname, "public", "admin.html"));
-});
-
-app.get("/admin-login", (req, res) => {
-  return res.sendFile(path.join(__dirname, "public", "admin-login.html"));
-});
-
 app.use(express.static(path.join(__dirname, "public")));
 
 // Self-ping (Render)

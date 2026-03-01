@@ -5,8 +5,6 @@ const path = require("path");
 const express = require("express");
 const { Pool } = require("pg");
 const crypto = require("crypto");
-const fs = require("fs");
-const path = require("path");
 
 function readSlotsFromIndexHtml() {
   // try common locations (root + public/)

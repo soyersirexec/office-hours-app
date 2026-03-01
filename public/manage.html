@@ -69,13 +69,13 @@ async function load() {
 
   const resp = await fetch(`/api/manage?token=${encodeURIComponent(token)}`, { cache: "no-store" });
   const data = await resp.json().catch(() => ({}));
-
   if (!data.ok) {
     info.textContent = "Booking not found.";
     return;
   }
 
   const b = data.booking;
+  currentBookedSlot = booking ? booking.slot : null;
   currentSlot = b.slot;
 
   info.innerHTML = `
@@ -96,23 +96,32 @@ cancelBtn.onclick = async () => {
   changeBtn.disabled = true;
   slotSelect.disabled = true;
 
-  const resp = await fetch("/api/manage/cancel", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ token })
-  });
+  try {
+    if (!currentSlot) {
+      msg.textContent = "No active booking to cancel.";
+      await load();
+      return;
+    }
 
-  const data = await resp.json().catch(() => ({}));
+    const resp = await fetch("/api/manage/cancel", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ token, slot: currentSlot }),
+    });
 
-  if (data.ok) {
-    msg.textContent = "Your booking has been cancelled.";
-    await load();
-return;
-    cancelBtn.classList.add("hidden");
-    changeWrap.classList.add("hidden");
-    info.innerHTML = "";
-  } else {
+    const data = await resp.json().catch(() => ({}));
+
+    if (data.ok) {
+      msg.textContent = "Your appointment has been cancelled.";
+      await load();   // refresh UI immediately
+      return;
+    }
+
     msg.textContent = "Cancel failed.";
+  } catch (e) {
+    console.error("CANCEL ERROR:", e);
+    msg.textContent = "Cancel failed.";
+  } finally {
     cancelBtn.disabled = false;
     changeBtn.disabled = false;
     slotSelect.disabled = false;

@@ -124,7 +124,7 @@ const manageUrl = `${PUBLIC_BASE_URL}/manage.html?token=${encodeURIComponent(tok
   }
   if (!to) return;
 
-  const manageUrl = `${PUBLIC_BASE_URL}/manage.html?token=${manageToken}&v=${Date.now()}`;
+  const manageUrl = `${PUBLIC_BASE_URL}/manage.html?token=${encodeURIComponent(token)}&v=${Date.now()}`;
 
   const subject = "Speaking Center Appointment – Manage Link";
   const text =

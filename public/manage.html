@@ -74,9 +74,7 @@ async function load() {
     return;
   }
 
-  const b = data.booking;
-  currentBookedSlot = booking ? booking.slot : null;
-  currentSlot = b.slot;
+  currentSlot = data.booking ? data.booking.slot : null;
 
   info.innerHTML = `
     <div><b>Name:</b> ${escapeHtml(b.name || "")}</div>
@@ -91,14 +89,20 @@ async function load() {
 }
 
 cancelBtn.onclick = async () => {
-  msg.textContent = "";
-  cancelBtn.disabled = true;
-  changeBtn.disabled = true;
-  slotSelect.disabled = true;
+  // grab elements safely (prevents ReferenceError crashes)
+  const msgEl = msg || document.getElementById("msg") || document.querySelector("#msg");
+  const changeEl = changeBtn || document.getElementById("changeBtn") || document.querySelector("#changeBtn");
+  const cancelEl = cancelBtn || document.getElementById("cancelBtn") || document.querySelector("#cancelBtn");
+  const selectEl = document.getElementById("slotSelect") || document.querySelector("#slotSelect");
+
+  if (msgEl) msgEl.textContent = "";
+  if (cancelEl) cancelEl.disabled = true;
+  if (changeEl) changeEl.disabled = true;
+  if (selectEl) selectEl.disabled = true;
 
   try {
     if (!currentSlot) {
-      msg.textContent = "No active booking to cancel.";
+      if (msgEl) msgEl.textContent = "No active booking to cancel.";
       await load();
       return;
     }
@@ -112,19 +116,19 @@ cancelBtn.onclick = async () => {
     const data = await resp.json().catch(() => ({}));
 
     if (data.ok) {
-      msg.textContent = "Your appointment has been cancelled.";
-      await load();   // refresh UI immediately
+      if (msgEl) msgEl.textContent = "Your appointment has been cancelled.";
+      await load();
       return;
     }
 
-    msg.textContent = "Cancel failed.";
+    if (msgEl) msgEl.textContent = data.error ? `Cancel failed: ${data.error}` : "Cancel failed.";
   } catch (e) {
     console.error("CANCEL ERROR:", e);
-    msg.textContent = "Cancel failed.";
+    if (msgEl) msgEl.textContent = "Cancel failed.";
   } finally {
-    cancelBtn.disabled = false;
-    changeBtn.disabled = false;
-    slotSelect.disabled = false;
+    if (cancelEl) cancelEl.disabled = false;
+    if (changeEl) changeEl.disabled = false;
+    if (selectEl) selectEl.disabled = false;
   }
 };
 

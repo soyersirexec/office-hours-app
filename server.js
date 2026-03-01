@@ -742,6 +742,13 @@ app.post("/api/manage/cancel", async (req, res) => {
       console.error("EMAIL CANCEL ERROR:", e)
     );
 
+    // fire-and-forget gcal delete
+    if (b.gcal_event_id) {
+      deleteGoogleCalendarEvent({ eventId: b.gcal_event_id }).catch((e) =>
+        console.error("GCAL DELETE ERROR:", e?.message || e)
+      );
+    }
+
     return res.json({ ok: true, cancelledSlot: result.rows[0].slot });
   } catch (err) {
     console.error("MANAGE CANCEL ERROR:", err);

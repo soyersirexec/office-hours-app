@@ -413,7 +413,6 @@ function slotToGCalTimes(slot) {
   const pad = (n) => String(n).padStart(2, "0");
   const startLocal = `${date}T${pad(hh)}:${pad(mm)}:00`;
   const endLocal = `${date}T${pad(endH)}:${pad(endM)}:00`;
-  const timeRange = `${startLocal.slice(11,16)}-${endLocal.slice(11,16)}`;
 
   return { startLocal, endLocal };
 }
@@ -443,7 +442,7 @@ async function createGoogleCalendarEvent({ slot, name, studentNo, email }) {
       calendar.events.insert({
         calendarId: GOOGLE_CALENDAR_ID,
         requestBody: {
-          summary: `Speaking Center (${timeRange}) – ${name} (${studentNo})`,
+          summary: `Speaking Center – ${name} (${studentNo})`,
           description: `Student: ${name}\nStudent No: ${studentNo}\nEmail: ${email}\nSlot: ${slot}`,
           start: { dateTime: startLocal, timeZone: GCAL_TZ },
           end: { dateTime: endLocal, timeZone: GCAL_TZ },

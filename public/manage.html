@@ -71,11 +71,7 @@ async function load() {
   const data = await resp.json().catch(() => ({}));
 
   if (!data.ok) {
-    if (data.error === "token_expired") {
-      info.textContent = "This manage link has expired. Please book again or request a new link.";
-    } else {
-      info.textContent = "Booking not found.";
-    }
+    info.textContent = "Booking not found.";
     return;
   }
 
@@ -114,9 +110,7 @@ cancelBtn.onclick = async () => {
     changeWrap.classList.add("hidden");
     info.innerHTML = "";
   } else {
-    msg.textContent = data.error === "token_expired"
-      ? "This manage link has expired. Please book again or request a new link."
-      : "Cancel failed.";
+    msg.textContent = "Cancel failed.";
     cancelBtn.disabled = false;
     changeBtn.disabled = false;
     slotSelect.disabled = false;
@@ -158,9 +152,7 @@ changeBtn.onclick = async () => {
     cancelBtn.disabled = false;
     slotSelect.disabled = false;
   } else {
-    msg.textContent = data.error === "token_expired"
-      ? "This manage link has expired. Please book again or request a new link."
-      : "Change failed.";
+    msg.textContent = "Change failed.";
     changeBtn.disabled = false;
     cancelBtn.disabled = false;
     slotSelect.disabled = false;
@@ -173,16 +165,16 @@ async function loadAvailableSlots() {
   changeBtn.disabled = true;
 
   try {
-    const [bookedResp, allResp] = await Promise.all([
-      fetch("/api/availability", { cache: "no-store" }),
-      fetch("/api/all-slots", { cache: "no-store" })
+    const [availResp, allResp] = await Promise.all([
+      fetch(`/api/availability?t=${Date.now()}`, { cache: "no-store" }),
+      fetch(`/api/all-slots?t=${Date.now()}`, { cache: "no-store" })
     ]);
 
-    const bookedData = await bookedResp.json();
-    const allSlots = await allResp.json();
+    const availData = await availResp.json().catch(() => ({}));
+    const bookedArr = Array.isArray(availData.booked) ? availData.booked : [];
+    const bookedSet = new Set(bookedArr);
 
-    const bookedSet = new Set(Array.isArray(bookedData?.booked) ? bookedData.booked : []);
-
+    const allSlots = await allResp.json().catch(() => []);
     const available = (Array.isArray(allSlots) ? allSlots : [])
       .filter((s) => s && s !== currentSlot)
       .filter((s) => !bookedSet.has(s));
@@ -192,7 +184,10 @@ async function loadAvailableSlots() {
       available.map((s) => `<option value="${escapeAttr(s)}">${escapeHtml(formatSlot(s))}</option>`).join("");
 
     slotSelect.disabled = false;
-    changeBtn.disabled = false;
+    changeBtn.disabled = available.length === 0;
+    if (available.length === 0) {
+      msg.textContent = "No other slots are available right now.";
+    }
   } catch (e) {
     slotSelect.innerHTML = `<option value="">Could not load slots</option>`;
     slotSelect.disabled = false;

@@ -316,7 +316,7 @@ let serverBookedSet = new Set();
 
 async function loadBookedSetFromServer() {
   try {
-    const resp = await fetch("/api/availability", { cache: "no-store" });
+    const resp = await fetch(`/api/availability?t=${Date.now()}`, { cache: "no-store" });
     if (!resp.ok) return new Set();
     const data = await resp.json().catch(() => ({}));
     const booked = Array.isArray(data?.booked) ? data.booked : [];

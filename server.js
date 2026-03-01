@@ -1,899 +1,632 @@
-// server.js
-const fs = require("fs");
-const path = require("path");
+let notifyTimer = null;
+function showManageLink(token) {
+  const url = `${location.origin}/manage.html?token=${encodeURIComponent(token)}`;
 
-const express = require("express");
-const { Pool } = require("pg");
-const crypto = require("crypto");
-
-const app = express();
-const PORT = process.env.PORT || 3000;
-
-// Recommended: set ADMIN_PASSWORD in Render env vars instead of hardcoding
-const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || "CHANGE_ME_IN_RENDER_ENV";
-
-// Admin session signing (HMAC). Set ADMIN_SESSION_SECRET in env (recommended).
-const ADMIN_SESSION_SECRET = (process.env.ADMIN_SESSION_SECRET || ADMIN_PASSWORD || "dev").trim();
-const ADMIN_COOKIE_NAME = "admin_session";
-const ADMIN_SESSION_MS = 1000 * 60 * 60 * 8; // 8 hours
-
-// Manage-link (token) TTL (defaults to 30 days). You can override via env.
-const MANAGE_TOKEN_TTL_DAYS = Number(process.env.MANAGE_TOKEN_TTL_DAYS || 30);
-const MANAGE_TOKEN_TTL_MS = Number.isFinite(MANAGE_TOKEN_TTL_DAYS) && MANAGE_TOKEN_TTL_DAYS > 0
-  ? MANAGE_TOKEN_TTL_DAYS * 24 * 60 * 60 * 1000
-  : 30 * 24 * 60 * 60 * 1000;
-
-// Render/HTTPS proxy support
-app.set("trust proxy", 1);
-
-// Basic cookie parser (no extra dependency)
-function parseCookies(req) {
-  const header = req.headers.cookie || "";
-  const out = {};
-  header.split(";").forEach(part => {
-    const i = part.indexOf("=");
-    if (i === -1) return;
-    const k = part.slice(0, i).trim();
-    const v = part.slice(i + 1).trim();
-    if (!k) return;
-    out[k] = decodeURIComponent(v);
-  });
-  return out;
-}
-
-function b64url(buf) {
-  return Buffer.from(buf).toString("base64").replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, "");
-}
-
-function signAdminPayload(payloadObj) {
-  const payload = JSON.stringify(payloadObj);
-  const payloadB64 = b64url(payload);
-  const sig = crypto
-    .createHmac("sha256", ADMIN_SESSION_SECRET)
-    .update(payloadB64)
-    .digest("base64")
-    .replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, "");
-  return `${payloadB64}.${sig}`;
-}
-
-function verifyAdminCookieValue(val) {
-  if (!val || typeof val !== "string") return null;
-  const parts = val.split(".");
-  if (parts.length !== 2) return null;
-  const [payloadB64, sig] = parts;
-  const expected = crypto
-    .createHmac("sha256", ADMIN_SESSION_SECRET)
-    .update(payloadB64)
-    .digest("base64")
-    .replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, "");
-  try {
-  // timingSafeEqual throws if buffer lengths differ
-  if (sig.length !== expected.length) return null;
-  if (!crypto.timingSafeEqual(Buffer.from(sig), Buffer.from(expected))) return null;
-} catch {
-  return null;
-}
-
-  try {
-    const json = Buffer.from(payloadB64.replace(/-/g, "+").replace(/_/g, "/"), "base64").toString("utf8");
-    const payload = JSON.parse(json);
-    if (!payload || payload.role !== "admin") return null;
-    if (typeof payload.exp !== "number" || Date.now() > payload.exp) return null;
-    return payload;
-  } catch {
-    return null;
-  }
-}
-
-function requireAdmin(req, res, next) {
-  const cookies = parseCookies(req);
-  const payload = verifyAdminCookieValue(cookies[ADMIN_COOKIE_NAME]);
-  if (!payload) return res.status(401).json({ ok: false, error: "unauthorized" });
-  req.admin = payload;
-  next();
-}
-
-function isRequestSecure(req) {
-  // Express sets req.secure when trust proxy is enabled and the proxy indicates HTTPS.
-  if (req.secure) return true;
-  const xfProto = String(req.headers["x-forwarded-proto"] || "").toLowerCase();
-  return xfProto.includes("https");
-}
-
-function setAdminCookie(res, value, maxAgeSeconds) {
-  const secure = isRequestSecure(res.req);
-  const secureAttr = secure ? "; Secure" : "";
-  res.setHeader(
-    "Set-Cookie",
-    `${ADMIN_COOKIE_NAME}=${encodeURIComponent(value)}; Path=/; HttpOnly; SameSite=Lax${secureAttr}; Max-Age=${maxAgeSeconds}`
-  );
-}
-
-function isManageTokenExpired(createdAt) {
-  if (!createdAt) return false;
-  const ts = new Date(createdAt).getTime();
-  if (Number.isNaN(ts)) return false;
-  return Date.now() - ts > MANAGE_TOKEN_TTL_MS;
-}
-
-// Slot parsing helpers (interprets slot as Europe/Istanbul time, +03:00)
-function slotToDate(slot) {
-  // slot format: YYYY-MM-DD-HH-MM
-  const m = /^\d{4}-\d{2}-\d{2}-\d{2}-\d{2}$/.exec(String(slot || ""));
-  if (!m) return null;
-  const date = slot.slice(0, 10);
-  const time = slot.slice(11).replace("-", ":");
-  const d = new Date(`${date}T${time}:00+03:00`);
-  return Number.isNaN(d.getTime()) ? null : d;
-}
-
-function isPastSlot(slot) {
-  const d = slotToDate(slot);
-  if (!d) return false;
-  return d.getTime() < Date.now();
-}
-
-// ===== Resend email (no SMTP) =====
-// Render env vars you must set:
-//   RESEND_API_KEY=your_resend_api_key
-//   RESEND_FROM="Speaking Center <no-reply@yourdomain.com>"   (must be a verified sender in Resend)
-//   PUBLIC_BASE_URL=https://YOUR-RENDER-URL.onrender.com
-const RESEND_API_KEY = process.env.RESEND_API_KEY;
-const RESEND_FROM = process.env.RESEND_FROM;
-const PUBLIC_BASE_URL = process.env.PUBLIC_BASE_URL;
-
-async function sendManageLinkEmail({ to, name, slot, token }) {
-  if (!RESEND_API_KEY || !RESEND_FROM) {
-    console.log("EMAIL: disabled (missing RESEND_API_KEY or RESEND_FROM)");
+  // reuse your existing notify if you want, otherwise basic alert:
+  if (typeof showNotify === "function") {
+    showNotify("Booked ✅", `Manage / cancel / change: ${url}`);
     return;
   }
-  if (!PUBLIC_BASE_URL) {
-    console.log("EMAIL: skipped (missing PUBLIC_BASE_URL env var)");
-    return;
-  }
-  if (!to) return;
 
-  const manageUrl = `${PUBLIC_BASE_URL}/manage.html?token=${encodeURIComponent(token)}`;
-
-  const subject = "Speaking Center Appointment – Manage Link";
-  const text =
-    `Hello${name ? " " + name : ""},\n\n` +
-    `Your appointment has been booked.\n\n` +
-    `Slot: ${slot}\n\n` +
-    `Manage (cancel/change): ${manageUrl}\n\n`;
-
-  const html =
-    `<p>Hello${name ? " " + escapeHtml(name) : ""},</p>` +
-    `<p>Your appointment has been booked.</p>` +
-    `<p><b>Slot:</b> ${escapeHtml(slot)}</p>` +
-    `<p><b>Manage (cancel/change):</b> <a href="${manageUrl}">${manageUrl}</a></p>`;
-
-  try {
-    const resp = await fetch("https://api.resend.com/emails", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${RESEND_API_KEY}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        from: RESEND_FROM,
-        to: [to],
-        subject,
-        html,
-        text,
-      }),
-    });
-
-    if (!resp.ok) {
-      const body = await resp.text().catch(() => "");
-      console.error("EMAIL: Resend failed", resp.status, body);
-      return;
-    }
-
-    console.log("EMAIL: sent to", to);
-  } catch (e) {
-    console.error("EMAIL: Resend error:", e);
-  }
+  window.prompt("Manage / cancel / change link (copy):", url);
 }
-async function sendCancelledEmail({ to, name, oldSlot }) {
-  if (!RESEND_API_KEY || !RESEND_FROM) return;
-  if (!to) return;
+function notify({ type = "info", title = "Notice", message = "", ms } = {}) {
+  const wrap = document.getElementById("notify");
+  const card = document.getElementById("notifyCard");
+  const icon = document.getElementById("notifyIcon");
+  const t = document.getElementById("notifyTitle");
+  const m = document.getElementById("notifyMsg");
+  const close = document.getElementById("notifyClose");
 
-  const subject = "Speaking Center Appointment – Cancelled";
-  const text =
-    `Hello${name ? " " + name : ""},\n\n` +
-    `Your appointment has been cancelled.\n\n` +
-    `Slot: ${oldSlot}\n\n`;
+  if (!wrap || !card || !icon || !t || !m || !close) return;
 
-  const html =
-    `<p>Hello${name ? " " + escapeHtml(name) : ""},</p>` +
-    `<p>Your appointment has been cancelled.</p>` +
-    `<p><b>Slot:</b> ${escapeHtml(oldSlot)}</p>`;
-
-  try {
-    const resp = await fetch("https://api.resend.com/emails", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${RESEND_API_KEY}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        from: RESEND_FROM,
-        to: [to],
-        subject,
-        html,
-        text,
-      }),
-    });
-
-    if (!resp.ok) {
-      const body = await resp.text().catch(() => "");
-      console.error("EMAIL: cancel failed", resp.status, body);
-      return;
-    }
-
-    console.log("EMAIL: cancel sent to", to);
-  } catch (e) {
-    console.error("EMAIL: cancel error:", e);
-  }
-}
-
-async function sendChangedEmail({ to, name, oldSlot, newSlot }) {
-  if (!RESEND_API_KEY || !RESEND_FROM) return;
-  if (!to) return;
-
-  const subject = "Speaking Center Appointment – Changed";
-  const text =
-    `Hello${name ? " " + name : ""},\n\n` +
-    `Your appointment has been changed.\n\n` +
-    `Old slot: ${oldSlot}\n` +
-    `New slot: ${newSlot}\n\n`;
-
-  const html =
-    `<p>Hello${name ? " " + escapeHtml(name) : ""},</p>` +
-    `<p>Your appointment has been changed.</p>` +
-    `<p><b>Old slot:</b> ${escapeHtml(oldSlot)}</p>` +
-    `<p><b>New slot:</b> ${escapeHtml(newSlot)}</p>`;
-
-  try {
-    const resp = await fetch("https://api.resend.com/emails", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${RESEND_API_KEY}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        from: RESEND_FROM,
-        to: [to],
-        subject,
-        html,
-        text,
-      }),
-    });
-
-    if (!resp.ok) {
-      const body = await resp.text().catch(() => "");
-      console.error("EMAIL: change failed", resp.status, body);
-      return;
-    }
-
-    console.log("EMAIL: change sent to", to);
-  } catch (e) {
-    console.error("EMAIL: change error:", e);
-  }
-}
-function escapeHtml(s) {
-  return String(s || "")
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;")
-    .replaceAll('"', "&quot;")
-    .replaceAll("'", "&#039;");
-}
-// ===== Google Calendar integration =====
-const GOOGLE_CALENDAR_ID = process.env.GOOGLE_CALENDAR_ID;
-let _gcalClient = null;
-
-function loadServiceAccountCreds() {
-  const raw = process.env.GOOGLE_SERVICE_ACCOUNT_JSON;
-  const b64 = process.env.GOOGLE_SERVICE_ACCOUNT_JSON_B64;
-
-  try {
-    if (raw && raw.trim().startsWith("{")) return JSON.parse(raw);
-  } catch {}
-
-  try {
-    if (b64 && b64.trim()) {
-      const decoded = Buffer.from(b64.trim(), "base64").toString("utf8");
-      return JSON.parse(decoded);
-    }
-  } catch {}
-
-  return null;
-}
-
-function getGoogleClient() {
-  if (_gcalClient) return _gcalClient;
-
-  const creds = loadServiceAccountCreds();
-  if (!creds) {
-    console.log("GCAL: disabled (missing GOOGLE_SERVICE_ACCOUNT_JSON or GOOGLE_SERVICE_ACCOUNT_JSON_B64)");
-    return null;
-  }
-
-  const pk = (creds.private_key || "").replace(/\\n/g, "\n").trim();
-  const ce = (creds.client_email || "").trim();
-
-  if (!pk || !ce) {
-    console.error("GCAL AUTH ERROR: missing client_email/private_key in creds");
-    return null;
-  }
-
-  const { google } = require("googleapis");
-  const auth = new google.auth.JWT(
-    ce,
-    null,
-    pk,
-    ["https://www.googleapis.com/auth/calendar"]
+  // reset classes
+  card.classList.remove("notify-success", "notify-error", "notify-warn", "notify-info");
+  card.classList.add(
+    type === "success" ? "notify-success" :
+    type === "error" ? "notify-error" :
+    type === "warn" ? "notify-warn" : "notify-info"
   );
 
-  // Force token fetch so auth problems show clearly
-  auth.authorize().catch(e => console.error("GCAL AUTH ERROR:", e?.message || e));
+  icon.textContent =
+    type === "success" ? "✅" :
+    type === "error" ? "⛔" :
+    type === "warn" ? "⚠️" : "ℹ️";
 
-  _gcalClient = google.calendar({ version: "v3", auth });
-  return _gcalClient;
-}
+  t.textContent = title;
+  m.textContent = message;
 
-function slotToGCalTimes(slot) {
-  // slot format: YYYY-MM-DD-HH-MM
-  const date = slot.slice(0, 10);
-  const hh = slot.slice(11, 13);
-  const mm = slot.slice(14, 16);
+  // show
+  wrap.classList.remove("hidden");
 
-  const start = `${date}T${hh}:${mm}:00`;
-  const endDate = new Date(`${start}+03:00`);
-  endDate.setMinutes(endDate.getMinutes() + 45); // session duration
+  function hide() {
+    wrap.classList.add("hidden");
+  }
 
-  const pad = (n) => String(n).padStart(2, "0");
-  const end = `${endDate.getFullYear()}-${pad(endDate.getMonth()+1)}-${pad(endDate.getDate())}T${pad(endDate.getHours())}:${pad(endDate.getMinutes())}:00`;
+  // ALWAYS ensure close works (overwrite handler cleanly)
+  close.onclick = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (notifyTimer) clearTimeout(notifyTimer);
+    hide();
+  };
 
-  return { start, end };
-}
+  // click outside the card closes too
+  wrap.onclick = (e) => {
+    if (e.target === wrap) {
+      if (notifyTimer) clearTimeout(notifyTimer);
+      hide();
+    }
+  };
 
-async function createGoogleCalendarEvent({ slot, name, studentNo, email }) {
-  try {
-    const calendar = getGoogleClient();
-    if (!calendar || !GOOGLE_CALENDAR_ID) return;
+  // ESC closes
+  document.onkeydown = (e) => {
+    if (e.key === "Escape" && !wrap.classList.contains("hidden")) {
+      if (notifyTimer) clearTimeout(notifyTimer);
+      hide();
+    }
+  };
 
-    const { start, end } = slotToGCalTimes(slot);
-
-    await calendar.events.insert({
-      calendarId: GOOGLE_CALENDAR_ID,
-      requestBody: {
-        summary: `Speaking Center – ${name} (${studentNo})`,
-        description: `Student: ${name}\nStudent No: ${studentNo}\nEmail: ${email}\nSlot: ${slot}`,
-        start: { dateTime: start, timeZone: "Europe/Istanbul" },
-        end: { dateTime: end, timeZone: "Europe/Istanbul" },
-      },
-    });
-
-    console.log("GCAL: event created for", slot);
-  } catch (err) {
-    console.error("GCAL CREATE ERROR:", err?.message || err);
+  // auto-hide only if ms is a number > 0
+  if (notifyTimer) clearTimeout(notifyTimer);
+  if (typeof ms === "number" && ms > 0) {
+    notifyTimer = setTimeout(hide, ms);
   }
 }
-// ---------- Allow-list (CSV of student numbers only) ----------
-const allowedCsvPath = path.join(__dirname, "allowed_students.csv");
-function normStudentNo(v) {
-  return String(v || "")
-    .trim()
-    .replace(/\s+/g, "") // remove spaces inside
-    .toUpperCase(); // case-insensitive match
-}
-function loadAllowedStudentNos() {
-  try {
-    const raw = fs.readFileSync(allowedCsvPath, "utf8");
-    return new Set(
-      raw
-        .split(/\r?\n/)
-        .map((l) => l.trim())
-        .filter(Boolean)
-        .filter((l) => l.toLowerCase() !== "student_no" && l.toLowerCase() !== "studentno")
-        .map((l) => normStudentNo(l.split(",")[0]))
+document.addEventListener("DOMContentLoaded", async () => {
+  document.querySelectorAll(".sc-check-btn").forEach((btn) => {
+  btn.addEventListener("click", checkAppointmentFlow);
+});
+  const grid = document.getElementById("daysGrid");
+  const prevBtn = document.getElementById("prevBtn");
+  const nextBtn = document.getElementById("nextBtn");
+  const pageInfo = document.getElementById("pageInfo");
+  const pagerWrap = document.getElementById("pagerWrap");
+
+  if (!grid || !prevBtn || !nextBtn || !pageInfo) return;
+
+  function getISOWeekKey(yyyy_mm_dd) {
+    const [y, m, d] = yyyy_mm_dd.split("-").map(Number);
+    const date = new Date(Date.UTC(y, m - 1, d));
+    const day = (date.getUTCDay() + 6) % 7;
+    date.setUTCDate(date.getUTCDate() - day + 3);
+    const weekYear = date.getUTCFullYear();
+
+    const firstThu = new Date(Date.UTC(weekYear, 0, 4));
+    const firstDay = (firstThu.getUTCDay() + 6) % 7;
+    firstThu.setUTCDate(firstThu.getUTCDate() - firstDay + 3);
+
+    const weekNo = 1 + Math.round((date - firstThu) / (7 * 24 * 3600 * 1000));
+    return `${weekYear}-W${String(weekNo).padStart(2, "0")}`;
+  }
+
+  function getCardDate(card) {
+    const s = card.querySelector(".slot[data-slot]");
+    if (!s) return null;
+    return s.dataset.slot.slice(0, 10);
+  }
+
+  function disableSlot(btn, strong = false) {
+    btn.classList.remove(
+      "bg-green-500",
+      "hover:bg-green-600",
+      "bg-emerald-500",
+      "hover:bg-emerald-600",
+      "active:scale-95"
     );
-  } catch (e) {
-    console.error("Allow-list CSV could not be read:", e.message);
+    btn.classList.add(
+      strong ? "bg-gray-400" : "bg-gray-200",
+      "cursor-not-allowed",
+      strong ? "opacity-80" : "opacity-70"
+    );
+    btn.disabled = true;
+  }
+
+  function showToastNear(element, message) {
+    const toast = document.getElementById("toast");
+    const text = document.getElementById("toastText");
+    if (!toast || !text) return;
+
+    text.textContent = message;
+
+    const rect = element.getBoundingClientRect();
+    toast.style.top = `${window.scrollY + rect.top - 42}px`;
+    toast.style.left = `${rect.left}px`;
+
+    toast.classList.remove("hidden");
+    setTimeout(() => toast.classList.add("hidden"), 1800);
+  }
+
+  // --------- Modern profile modal (no prompts) ----------
+  const PROFILE_KEY = "booking_student_profile_v1";
+
+  function getSavedProfile() {
+    try {
+      const p = JSON.parse(localStorage.getItem(PROFILE_KEY) || "null");
+      if (p?.name && p?.studentNo && p?.email) return p;
+    } catch {}
+    return null;
+  }
+
+  function saveProfile(p) {
+    localStorage.setItem(PROFILE_KEY, JSON.stringify(p));
+  }
+
+  function clearProfile() {
+    localStorage.removeItem(PROFILE_KEY);
+  }
+
+  function openProfileModal({ force = false, errorText = "" } = {}) {
+    return new Promise((resolve) => {
+      const modal = document.getElementById("profileModal");
+      const form = document.getElementById("profileForm");
+      const nameEl = document.getElementById("pfName");
+      const snEl = document.getElementById("pfStudentNo");
+      const emailEl = document.getElementById("pfEmail");
+      const errEl = document.getElementById("pfError");
+      const cancelBtn = document.getElementById("pfCancel");
+
+      const existing = !force ? getSavedProfile() : null;
+      if (existing) return resolve(existing);
+
+      errEl.classList.toggle("hidden", !errorText);
+      errEl.textContent = errorText || "";
+      nameEl.value = "";
+      snEl.value = "";
+      emailEl.value = "";
+
+      modal.classList.remove("hidden");
+      nameEl.focus();
+
+      function close(val) {
+        modal.classList.add("hidden");
+        form.removeEventListener("submit", onSubmit);
+        cancelBtn.removeEventListener("click", onCancel);
+        resolve(val);
+      }
+
+      function onCancel() {
+        close(null);
+      }
+
+      function onSubmit(e) {
+        e.preventDefault();
+        const profile = {
+          name: nameEl.value.trim(),
+          studentNo: snEl.value.trim().replace(/\s+/g, "").toUpperCase(),
+          email: emailEl.value.trim().toLowerCase(),
+        };
+        if (!profile.name || !profile.studentNo || !profile.email) {
+          errEl.textContent = "Please fill all fields.";
+          errEl.classList.remove("hidden");
+          return;
+        }
+        saveProfile(profile);
+        close(profile);
+      }
+
+      form.addEventListener("submit", onSubmit);
+      cancelBtn.addEventListener("click", onCancel);
+    });
+  }
+  // masking
+  function maskName(full) {
+  if (!full) return "";
+
+  return full
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean)
+    .map(word => word[0].toUpperCase() + "***")
+    .join(" ");
+}
+  // ---- Disable past dates ----
+  
+  // ---- Tabs: Available / Previous ----
+  const availableTab = document.getElementById("tab-available");
+  const previousTab = document.getElementById("tab-previous");
+  const tabBtnAvailable = document.getElementById("tabBtnAvailable");
+  const tabBtnPrevious = document.getElementById("tabBtnPrevious");
+  const previousCountEl = document.getElementById("previousCount");
+  const previousGrid = document.getElementById("previousDaysGrid");
+  const availableEmpty = document.getElementById("availableEmpty");
+  const previousEmpty = document.getElementById("previousEmpty");
+
+  let activeTabName = "available"; // ✅ always start on Available
+
+  function setActiveTab(name) {
+    activeTabName = name === "previous" ? "previous" : "available";
+
+    if (availableTab) availableTab.classList.toggle("hidden", activeTabName !== "available");
+    if (previousTab) previousTab.classList.toggle("hidden", activeTabName !== "previous");
+
+    // button styles
+    if (tabBtnAvailable) {
+      tabBtnAvailable.classList.toggle("border-blue-700", activeTabName === "available");
+      tabBtnAvailable.classList.toggle("text-blue-700", activeTabName === "available");
+      tabBtnAvailable.classList.toggle("border-transparent", activeTabName !== "available");
+      tabBtnAvailable.classList.toggle("text-gray-600", activeTabName !== "available");
+    }
+    if (tabBtnPrevious) {
+      tabBtnPrevious.classList.toggle("border-blue-700", activeTabName === "previous");
+      tabBtnPrevious.classList.toggle("text-blue-700", activeTabName === "previous");
+      tabBtnPrevious.classList.toggle("border-transparent", activeTabName !== "previous");
+      tabBtnPrevious.classList.toggle("text-gray-600", activeTabName !== "previous");
+    }
+
+    // reset paging when switching tabs
+    page = 1;
+    render();
+    document.getElementById("appointmentsSection")?.scrollIntoView({ behavior: "smooth", block: "start" });
+  }
+
+  tabBtnAvailable?.addEventListener("click", () => setActiveTab("available"));
+  tabBtnPrevious?.addEventListener("click", () => setActiveTab("previous"));
+
+  // ---- Move past days into "Previous" tab + disable them ----
+  function movePastDays() {
+    const todayDate = new Date();
+    todayDate.setHours(0, 0, 0, 0);
+
+    const allCards = Array.from(document.querySelectorAll(".day-card"));
+    let moved = 0;
+
+    allCards.forEach((card) => {
+      const first = card.querySelector(".slot[data-slot]");
+      if (!first) return;
+
+      const d = first.dataset.slot.slice(0, 10);
+      const [y, m, day] = d.split("-").map(Number);
+      const cardDate = new Date(y, m - 1, day);
+      cardDate.setHours(0, 0, 0, 0);
+
+      if (cardDate < todayDate) {
+        // disable all slots on this past day
+        card.querySelectorAll(".slot").forEach((btn) => disableSlot(btn, false));
+        card.classList.add("past-day");
+
+        // move to previous grid (if present)
+        if (previousGrid) {
+          previousGrid.appendChild(card);
+          moved++;
+        }
+      }
+    });
+
+    // count after move
+    const previousCount = previousGrid?.querySelectorAll(".day-card").length || 0;
+    if (previousCountEl) previousCountEl.textContent = String(previousCount);
+
+    // hide Previous tab when empty
+    if (tabBtnPrevious) tabBtnPrevious.classList.toggle("hidden", previousCount === 0);
+    if (activeTabName === "previous" && previousCount === 0) setActiveTab("available");
+
+    // empty states
+    const availableCount = document.getElementById("daysGrid")?.querySelectorAll(".day-card").length || 0;
+    if (availableEmpty) availableEmpty.classList.toggle("hidden", availableCount !== 0);
+
+    const previousCount2 = previousGrid?.querySelectorAll(".day-card").length || 0;
+    if (previousEmpty) previousEmpty.classList.toggle("hidden", previousCount2 !== 0);
+  }
+  movePastDays();
+
+
+// ---- Load bookings from server + apply on UI ----
+let serverBookedSet = new Set();
+
+async function loadBookedSetFromServer() {
+  try {
+    const resp = await fetch("/api/availability", { cache: "no-store" });
+    if (!resp.ok) return new Set();
+    const data = await resp.json().catch(() => ({}));
+    const booked = Array.isArray(data?.booked) ? data.booked : [];
+    return new Set(booked.filter(Boolean));
+  } catch {
     return new Set();
   }
 }
 
-let ALLOWED_STUDENTS = loadAllowedStudentNos();
-console.log("Allowed students loaded:", ALLOWED_STUDENTS.size);
-
-// ---------- Middleware ----------
-app.use(express.json());
-
-// no-cache for API responses (prevents weird stale results)
-app.use((req, res, next) => {
-  if (req.path.startsWith("/api/")) {
-    res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate, proxy-revalidate");
-    res.setHeader("Pragma", "no-cache");
-    res.setHeader("Expires", "0");
-    res.setHeader("Surrogate-Control", "no-store");
-  }
-  next();
-});
-
-// ---------- Postgres connection (Supabase) ----------
-const pool = new Pool({
-  connectionString: process.env.DATABASE_URL,
-  ssl: { rejectUnauthorized: false },
-});
-
-// ---------- DB init (create + upgrade safely) ----------
-(async () => {
-  try {
-    await pool.query(`
-      CREATE TABLE IF NOT EXISTS bookings (
-        slot TEXT PRIMARY KEY,
-        name TEXT,
-        booked_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-      );
-    `);
-
-    await pool.query(`ALTER TABLE bookings ADD COLUMN IF NOT EXISTS student_no TEXT;`);
-    await pool.query(`ALTER TABLE bookings ADD COLUMN IF NOT EXISTS email TEXT;`);
-    await pool.query(`ALTER TABLE bookings ADD COLUMN IF NOT EXISTS manage_token_hash TEXT;`);
-    await pool.query(
-      `ALTER TABLE bookings ADD COLUMN IF NOT EXISTS manage_token_created_at TIMESTAMPTZ NOT NULL DEFAULT NOW();`
-    );
-
-    await pool.query(`
-      CREATE UNIQUE INDEX IF NOT EXISTS bookings_manage_token_hash_unique
-      ON bookings (manage_token_hash)
-      WHERE manage_token_hash IS NOT NULL;
-    `);
-
-    await pool.query(`
-      CREATE UNIQUE INDEX IF NOT EXISTS bookings_one_per_student_no
-      ON bookings (student_no)
-      WHERE student_no IS NOT NULL;
-    `);
-
-    console.log("DB ready: bookings table ok");
-  } catch (err) {
-    console.error("DB init failed:", err);
-  }
-})();
-
-// ---------- API ----------
-
-// Frontend uses this to mark booked slots on load
-
-app.get("/api/availability", async (req, res) => {
-  try {
-    const { rows } = await pool.query("SELECT slot FROM bookings");
-    return res.json({ booked: rows.map(r => r.slot) });
-  } catch (err) {
-    console.error("AVAILABILITY GET ERROR:", err);
-    return res.json({ booked: [] });
-  }
-});
-
-// Admin-only: full booking details (PII). Use /api/availability for public.
-app.get("/api/bookings", requireAdmin, async (req, res) => {
-  try {
-    const { rows } = await pool.query("SELECT slot, booked_at, name, student_no, email FROM bookings");
-    const out = {};
-    for (const r of rows) {
-      out[r.slot] = {
-        bookedAt: r.booked_at,
-        name: r.name || null,
-        studentNo: r.student_no || null,
-        email: r.email || null,
-      };
-    }
-    return res.json(out);
-  } catch (err) {
-    console.error("BOOKINGS GET ERROR:", err);
-    return res.json({});
-  }
-});
-
-app.post("/api/book", async (req, res) => {
-  const { slot, name, studentNo, email } = req.body || {};
-
-  if (isPastSlot(slot)) {
-    return res.status(400).json({ ok: false, error: "past_slot" });
-  }
-
-  if (!slot || !name || !studentNo || !email) {
-    return res.status(400).json({ ok: false, error: "Missing fields" });
-  }
-
-  const sn = normStudentNo(studentNo);
-  const nm = String(name).trim();
-  const em = String(email).trim().toLowerCase();
-  if (!em.endsWith("@ankaramedipol.edu.tr")) {
-  return res.status(400).json({ ok: false, error: "invalid_email_domain" });
+function enableSlot(btn) {
+  btn.classList.remove("bg-gray-400", "bg-gray-200", "cursor-not-allowed", "opacity-80", "opacity-70");
+  // restore default "available" styling (matches index.html)
+  btn.classList.add("bg-green-500", "hover:bg-green-600", "text-white");
+  btn.disabled = false;
 }
 
-  if (!ALLOWED_STUDENTS.has(sn)) {
-    return res.status(403).json({ ok: false, error: "Not allowed" });
-  }
+function applyBookedStateToUI(bookedSet) {
+  document.querySelectorAll(".slot[data-slot]").forEach((btn) => {
+    const slotId = btn.dataset.slot;
+    const isBooked = bookedSet.has(slotId);
 
-  try {
-    const manageToken = crypto.randomBytes(32).toString("hex");
-    const manageTokenHash = crypto.createHash("sha256").update(manageToken).digest("hex");
-
-    const q = `
-      INSERT INTO bookings (slot, name, student_no, email, manage_token_hash)
-      VALUES ($1, $2, $3, $4, $5)
-      ON CONFLICT (slot) DO NOTHING
-      RETURNING slot
-    `;
-
-    const result = await pool.query(q, [slot, nm, sn, em, manageTokenHash]);
-
-    if (result.rowCount === 0) {
-      return res.status(409).json({ ok: false, error: "Slot already booked" });
+    if (isBooked) {
+      disableSlot(btn, true);
+      btn.classList.add("booked-slot");
+      btn.title = "Booked";
+    } else {
+      // If it was previously marked booked, restore it (so cancel/change shows as available)
+      if (btn.classList.contains("booked-slot")) {
+        btn.classList.remove("booked-slot");
+        btn.title = "";
+        // only re-enable if it isn't in the previous tab (past)
+        const card = btn.closest(".day-card");
+        const isPreviousCard = card && card.closest("#previousGrid");
+        if (!isPreviousCard) enableSlot(btn);
+      }
     }
-
-    // fire-and-forget email (so UI response isn't delayed)
-    sendManageLinkEmail({ to: em, name: nm, slot, token: manageToken }).catch((e) =>
-      console.error("EMAIL SEND ERROR:", e)
-    );
-    createGoogleCalendarEvent({
-  slot,
-  name: nm,
-  studentNo: sn,
-  email: em,
-});
-
-    return res.json({ ok: true, manageToken });
-  } catch (err) {
-    if (err && err.code === "23505") {
-      return res.status(409).json({ ok: false, error: "Already booked once" });
-    }
-    console.error("BOOK ERROR:", err);
-    return res.status(500).json({ ok: false, error: "db_error" });
-  }
-});
-
-// Manage lookup by token
-app.get("/api/manage", async (req, res) => {
-  const token = String(req.query.token || "").trim();
-  if (!token) return res.status(400).json({ ok: false, error: "missing_token" });
-
-  try {
-    const tokenHash = crypto.createHash("sha256").update(token).digest("hex");
-
-    const { rows } = await pool.query(
-      `SELECT slot, name, student_no, email, booked_at, manage_token_created_at
-       FROM bookings
-       WHERE manage_token_hash = $1
-       LIMIT 1`,
-      [tokenHash]
-    );
-
-    if (!rows.length) return res.status(404).json({ ok: false, error: "not_found" });
-
-    if (isManageTokenExpired(rows[0].manage_token_created_at)) {
-      return res.status(410).json({ ok: false, error: "token_expired" });
-    }
-
-    return res.json({ ok: true, booking: rows[0] });
-  } catch (err) {
-    console.error("MANAGE GET ERROR:", err);
-    return res.status(500).json({ ok: false, error: "db_error" });
-  }
-});
-
-// Cancel by token
-app.post("/api/manage/cancel", async (req, res) => {
-  const token = String((req.body && req.body.token) || "").trim();
-  if (!token) return res.status(400).json({ ok: false, error: "missing_token" });
-
-  try {
-    const tokenHash = crypto.createHash("sha256").update(token).digest("hex");
-
-    // get booking first so we can email details
-    const cur = await pool.query(
-      `SELECT slot, name, email, manage_token_created_at
-       FROM bookings
-       WHERE manage_token_hash = $1
-       LIMIT 1`,
-      [tokenHash]
-    );
-
-    if (!cur.rows.length) return res.status(404).json({ ok: false, error: "not_found" });
-
-    if (isManageTokenExpired(cur.rows[0].manage_token_created_at)) {
-      return res.status(410).json({ ok: false, error: "token_expired" });
-    }
-
-    const b = cur.rows[0];
-
-    const result = await pool.query(
-      `DELETE FROM bookings
-       WHERE manage_token_hash = $1
-       RETURNING slot`,
-      [tokenHash]
-    );
-
-    if (result.rowCount === 0) return res.status(404).json({ ok: false, error: "not_found" });
-
-    // fire-and-forget email
-    sendCancelledEmail({ to: b.email, name: b.name, oldSlot: b.slot }).catch((e) =>
-      console.error("EMAIL CANCEL ERROR:", e)
-    );
-
-    return res.json({ ok: true, cancelledSlot: result.rows[0].slot });
-  } catch (err) {
-    console.error("MANAGE CANCEL ERROR:", err);
-    return res.status(500).json({ ok: false, error: "db_error" });
-  }
-});
-
-// Change by token (handles one-booking-per-student unique index safely)
-app.post("/api/manage/change", async (req, res) => {
-  const token = String((req.body && req.body.token) || "").trim();
-  const newSlot = String((req.body && req.body.newSlot) || "").trim();
-
-  if (!token) return res.status(400).json({ ok: false, error: "missing_token" });
-  if (!newSlot) return res.status(400).json({ ok: false, error: "missing_newSlot" });
-
-  const client = await pool.connect();
-  try {
-    await client.query("BEGIN");
-
-    const tokenHash = crypto.createHash("sha256").update(token).digest("hex");
-
-    const cur = await client.query(
-      `SELECT slot, name, student_no, email, manage_token_created_at
-       FROM bookings
-       WHERE manage_token_hash = $1
-       LIMIT 1`,
-      [tokenHash]
-    );
-
-    if (!cur.rows.length) {
-      await client.query("ROLLBACK");
-      return res.status(404).json({ ok: false, error: "not_found" });
-    }
-
-    const current = cur.rows[0];
-
-    if (isManageTokenExpired(current.manage_token_created_at)) {
-      await client.query("ROLLBACK");
-      return res.status(410).json({ ok: false, error: "token_expired" });
-    }
-
-    if (current.slot === newSlot) {
-      await client.query("ROLLBACK");
-      return res.json({ ok: true, oldSlot: current.slot, newSlot });
-    }
-
-    const taken = await client.query(`SELECT 1 FROM bookings WHERE slot = $1 LIMIT 1`, [newSlot]);
-    if (taken.rows.length) {
-      await client.query("ROLLBACK");
-      return res.status(409).json({ ok: false, error: "slot_taken" });
-    }
-
-    await client.query(`DELETE FROM bookings WHERE manage_token_hash = $1`, [tokenHash]);
-
-    await client.query(
-      `INSERT INTO bookings (slot, name, student_no, email, manage_token_hash)
-       VALUES ($1, $2, $3, $4, $5)`,
-      [newSlot, current.name, current.student_no, current.email, tokenHash]
-    );
-
-    await client.query("COMMIT");
-    sendChangedEmail({
-  to: current.email,
-  name: current.name,
-  oldSlot: current.slot,
-  newSlot,
-}).catch((e) => console.error("EMAIL CHANGE ERROR:", e));
-    return res.json({ ok: true, oldSlot: current.slot, newSlot });
-  } catch (err) {
-    await client.query("ROLLBACK");
-    console.error("MANAGE CHANGE ERROR:", err);
-
-    if (err && err.code === "23505") {
-      return res.status(409).json({ ok: false, error: "conflict" });
-    }
-
-    return res.status(500).json({ ok: false, error: "db_error" });
-  } finally {
-    client.release();
-  }
-});
-
-// Optional: Admin cancel booking (password protected)
-app.delete("/api/cancel/:slot", async (req, res) => {
-  const pw = req.query.pw;
-  if (pw !== ADMIN_PASSWORD) return res.status(401).json({ message: "Unauthorized" });
-
-  const slot = decodeURIComponent(req.params.slot);
-  try {
-    const result = await pool.query("DELETE FROM bookings WHERE slot = $1 RETURNING slot", [slot]);
-    if (result.rowCount === 0) return res.status(404).json({ message: "not_found" });
-    res.json({ message: "Booking cancelled", slot: result.rows[0].slot });
-  } catch (err) {
-    console.error("ADMIN CANCEL ERROR:", err);
-    res.status(500).json({ message: "db_error" });
-  }
-});
-
-app.get("/api/appointment/:studentNo", async (req, res) => {
-  const sn = normStudentNo(req.params.studentNo);
-  if (!sn) return res.status(400).json({ ok: false, error: "missing_studentNo" });
-
-  try {
-    const { rows } = await pool.query(
-      `SELECT slot, name, student_no, email, booked_at
-       FROM bookings
-       WHERE UPPER(REGEXP_REPLACE(student_no, '\\s+', '', 'g')) = $1
-       ORDER BY booked_at DESC
-       LIMIT 1`,
-      [sn]
-    );
-
-    if (!rows.length) return res.status(404).json({ ok: false, error: "not_found" });
-    return res.json({ ok: true, booking: rows[0] });
-  } catch (err) {
-    console.error("APPOINTMENT GET ERROR:", err);
-    return res.status(500).json({ ok: false, error: "db_error" });
-  }
-});
-
-// Backward-compatible: old admin page expects /api/slots
-app.get("/api/slots", async (req, res) => {
-  // Backward compatible, but protect it (names are personal data).
-  // Prefer /api/admin/bookings for admin UI and /api/availability for public.
-  const cookies = parseCookies(req);
-  const payload = verifyAdminCookieValue(cookies[ADMIN_COOKIE_NAME]);
-  if (!payload) return res.status(401).json({ ok: false, error: "unauthorized" });
-  try {
-    const { rows } = await pool.query("SELECT slot, name FROM bookings");
-    const out = {};
-    for (const r of rows) out[r.slot] = r.name || null;
-    return res.json(out);
-  } catch (err) {
-    console.error("SLOTS GET ERROR:", err);
-    return res.json({});
-  }
-});
-
-// All slots (source of truth)
-app.get("/api/all-slots", (req, res) => {
-  const ALL_SLOTS = [
-    "2026-03-02-09-00","2026-03-02-10-00","2026-03-02-10-45","2026-03-02-11-15","2026-03-02-12-00","2026-03-02-13-15","2026-03-02-13-45","2026-03-02-14-30",
-    "2026-03-03-09-00","2026-03-03-10-00","2026-03-03-10-45","2026-03-03-11-15","2026-03-03-12-00","2026-03-03-13-15","2026-03-03-13-45","2026-03-03-14-30",
-    "2026-03-09-09-00","2026-03-09-10-00","2026-03-09-10-45","2026-03-09-11-15","2026-03-09-12-00","2026-03-09-13-15","2026-03-09-13-45","2026-03-09-14-30",
-    "2026-03-10-09-00","2026-03-10-10-00","2026-03-10-10-45","2026-03-10-11-15","2026-03-10-12-00","2026-03-10-13-15","2026-03-10-13-45","2026-03-10-14-30",
-    "2026-03-16-09-00","2026-03-16-10-00","2026-03-16-10-45","2026-03-16-11-15","2026-03-16-12-00","2026-03-16-13-15","2026-03-16-13-45","2026-03-16-14-30",
-    "2026-03-17-09-00","2026-03-17-10-00","2026-03-17-10-45","2026-03-17-11-15","2026-03-17-12-00","2026-03-17-13-15","2026-03-17-13-45","2026-03-17-14-30",
-    "2026-03-23-09-00","2026-03-23-10-00","2026-03-23-10-45","2026-03-23-11-15","2026-03-23-12-00","2026-03-23-13-15","2026-03-23-13-45","2026-03-23-14-30",
-    "2026-03-24-09-00","2026-03-24-10-00","2026-03-24-10-45","2026-03-24-11-15","2026-03-24-12-00","2026-03-24-13-15","2026-03-24-13-45","2026-03-24-14-30",
-    "2026-03-30-09-00","2026-03-30-10-00","2026-03-30-10-45","2026-03-30-11-15","2026-03-30-12-00","2026-03-30-13-15","2026-03-30-13-45","2026-03-30-14-30",
-    "2026-03-31-09-00","2026-03-31-10-00","2026-03-31-10-45","2026-03-31-11-15","2026-03-31-12-00","2026-03-31-13-15","2026-03-31-13-45","2026-03-31-14-30",
-    "2026-04-06-09-00","2026-04-06-10-00","2026-04-06-10-45","2026-04-06-11-15","2026-04-06-12-00","2026-04-06-13-15","2026-04-06-13-45","2026-04-06-14-30",
-    "2026-04-07-09-00","2026-04-07-10-00","2026-04-07-10-45","2026-04-07-11-15","2026-04-07-12-00","2026-04-07-13-15","2026-04-07-13-45","2026-04-07-14-30",
-    "2026-04-27-09-00","2026-04-27-10-00","2026-04-27-10-45","2026-04-27-11-15","2026-04-27-12-00","2026-04-27-13-15","2026-04-27-13-45","2026-04-27-14-30",
-    "2026-04-28-09-00","2026-04-28-10-00","2026-04-28-10-45","2026-04-28-11-15","2026-04-28-12-00","2026-04-28-13-15","2026-04-28-13-45","2026-04-28-14-30",
-    "2026-05-04-09-00","2026-05-04-10-00","2026-05-04-10-45","2026-05-04-11-15","2026-05-04-12-00","2026-05-04-13-15","2026-05-04-13-45","2026-05-04-14-30",
-    "2026-05-05-09-00","2026-05-05-10-00","2026-05-05-10-45","2026-05-05-11-15","2026-05-05-12-00","2026-05-05-13-15","2026-05-05-13-45","2026-05-05-14-30",
-    "2026-05-11-09-00","2026-05-11-10-00","2026-05-11-10-45","2026-05-11-11-15","2026-05-11-12-00","2026-05-11-13-15","2026-05-11-13-45","2026-05-11-14-30",
-    "2026-05-12-09-00","2026-05-12-10-00","2026-05-12-10-45","2026-05-12-11-15","2026-05-12-12-00","2026-05-12-13-15","2026-05-12-13-45","2026-05-12-14-30",
-    "2026-05-18-09-00","2026-05-18-10-00","2026-05-18-10-45","2026-05-18-11-15","2026-05-18-12-00","2026-05-18-13-15","2026-05-18-13-45","2026-05-18-14-30",
-    "2026-05-19-09-00","2026-05-19-10-00","2026-05-19-10-45","2026-05-19-11-15","2026-05-19-12-00","2026-05-19-13-15","2026-05-19-13-45","2026-05-19-14-30",
-    "2026-05-25-09-00","2026-05-25-10-00","2026-05-25-10-45","2026-05-25-11-15","2026-05-25-12-00","2026-05-25-13-15","2026-05-25-13-45","2026-05-25-14-30",
-    "2026-05-26-09-00","2026-05-26-10-00","2026-05-26-10-45","2026-05-26-11-15","2026-05-26-12-00","2026-05-26-13-15","2026-05-26-13-45","2026-05-26-14-30",
-    "2026-06-01-09-00","2026-06-01-10-00","2026-06-01-10-45","2026-06-01-11-15","2026-06-01-12-00","2026-06-01-13-15","2026-06-01-13-45","2026-06-01-14-30",
-    "2026-06-02-09-00","2026-06-02-10-00","2026-06-02-10-45","2026-06-02-11-15","2026-06-02-12-00","2026-06-02-13-15","2026-06-02-13-45","2026-06-02-14-30",
-  ];
-
-  return res.json(ALL_SLOTS);
-});
-
-// Static files
-
-// ===== Admin auth + routes =====
-app.post("/api/admin/login", (req, res) => {
-  const pw = String((req.body && req.body.password) || "").trim();
-  const expected = String(ADMIN_PASSWORD || "").trim();
-  if (!expected || expected === "CHANGE_ME_IN_RENDER_ENV") {
-  console.error("ADMIN_PASSWORD is missing or still default. Set it in Render env and restart the service.");
-  return res.status(500).json({
-    ok: false,
-    error: "admin_password_not_set",
-    hint: "Set ADMIN_PASSWORD in your Render service Environment and restart/redeploy."
   });
 }
-  if (pw !== expected) return res.status(401).json({ ok: false, error: "invalid_password" });
 
-  const cookieValue = signAdminPayload({ role: "admin", exp: Date.now() + ADMIN_SESSION_MS });
-  setAdminCookie(res, cookieValue, Math.floor(ADMIN_SESSION_MS / 1000));
-  return res.json({ ok: true });
-});
-
-app.post("/api/admin/logout", (req, res) => {
-  const secure = isRequestSecure(req);
-  const secureAttr = secure ? "; Secure" : "";
-  res.setHeader(
-    "Set-Cookie",
-    `${ADMIN_COOKIE_NAME}=; Path=/; HttpOnly; SameSite=Lax${secureAttr}; Max-Age=0`
-  );
-  return res.json({ ok: true });
-});
-
-app.get("/api/admin/me", (req, res) => {
-  const cookies = parseCookies(req);
-  const payload = verifyAdminCookieValue(cookies[ADMIN_COOKIE_NAME]);
-  if (!payload) return res.status(401).json({ ok: false });
-  return res.json({ ok: true });
-});
-
-// Simple health check for admin auth config (does not reveal secrets)
-app.get("/api/admin/ping", (req, res) => {
-  const expected = String(ADMIN_PASSWORD || "").trim();
-  return res.json({
-    ok: true,
-    adminPasswordConfigured: !!(expected && expected !== "CHANGE_ME_IN_RENDER_ENV"),
-    cookieName: ADMIN_COOKIE_NAME
-  });
-});
-
-
-app.get("/api/admin/bookings", requireAdmin, async (req, res) => {
-  try {
-    const { rows } = await pool.query("SELECT slot, booked_at, name, student_no, email FROM bookings");
-    return res.json(rows);
-  } catch (err) {
-    console.error("ADMIN BOOKINGS ERROR:", err);
-    return res.status(500).json({ ok: false, error: "db_error" });
-  }
-});
-
-app.delete("/api/admin/cancel/:slot", requireAdmin, async (req, res) => {
-  const slot = req.params.slot;
-  try {
-    await pool.query("DELETE FROM bookings WHERE slot=$1", [slot]);
-    return res.json({ ok: true, message: "Cancelled" });
-  } catch (err) {
-    console.error("ADMIN CANCEL ERROR:", err);
-    return res.status(500).json({ ok: false, error: "db_error" });
-  }
-});
-
-// Hide direct static access to admin.html; serve via /admin route only.
-app.get("/admin.html", (req, res) => res.status(404).send("Not found"));
-
-app.get("/admin", (req, res) => {
-  const cookies = parseCookies(req);
-  const payload = verifyAdminCookieValue(cookies[ADMIN_COOKIE_NAME]);
-  if (!payload) return res.redirect("/admin-login");
-  return res.sendFile(path.join(__dirname, "public", "admin.html"));
-});
-
-app.get("/admin-login", (req, res) => {
-  return res.sendFile(path.join(__dirname, "public", "admin-login.html"));
-});
-
-app.use(express.static(path.join(__dirname, "public")));
-
-// Self-ping (Render)
-const SELF_URL = process.env.RENDER_EXTERNAL_URL;
-if (SELF_URL) {
-  setInterval(() => {
-    fetch(SELF_URL)
-      .then(() => console.log("Self ping successful"))
-      .catch((err) => console.log("Self ping failed:", err.message));
-  }, 4 * 60 * 1000);
+async function refreshAvailability() {
+  const nextSet = await loadBookedSetFromServer();
+  serverBookedSet = nextSet;
+  applyBookedStateToUI(serverBookedSet);
 }
 
-app.listen(PORT, () => {
-  console.log(`Server running on port ${PORT}`);
+await refreshAvailability();
+
+// Poll to keep "green/grey" live without refreshing the page.
+// (Pause polling when tab isn't visible.)
+setInterval(() => {
+  if (document.visibilityState !== "visible") return;
+  refreshAvailability();
+}, 2500);
+
+  // ---- Click booking ----
+  document.querySelectorAll(".slot[data-slot]").forEach((slot) => {
+    slot.addEventListener("click", async () => {
+  if (slot.disabled) return;
+
+  // Block if this specific slot is already booked
+  if (serverBookedSet.has(slot.dataset.slot)) {
+    slot.classList.add("booked-slot");   // 🔒 add only here
+slot.title = 'Booked';
+    disableSlot(slot, true);
+    notify({
+      type: "warn",
+      title: "Slot taken",
+      message: "That time slot is already booked. Please choose another.",
+    });
+    return;
+  }
+
+  // Always ask for student info (shared device friendly)
+  const profile = await openProfileModal({ force: true });
+  if (!profile) return;
+
+  let resp;
+  try {
+    resp = await fetch("/api/book", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        slot: slot.dataset.slot,
+        name: profile.name,
+        studentNo: profile.studentNo,
+        email: profile.email,
+      }),
+    });
+  } catch {
+    notify({
+      type: "error",
+      title: "Connection problem",
+      message: "Cannot reach the server. Check your internet and try again.",
+      ms: 6000,
+    });
+    return;
+  }
+
+  const data = await resp.json().catch(() => ({}));
+
+  if (!resp.ok) {
+    // Not allowed -> retry modal
+    if (resp.status === 403 && data?.error === "Not allowed") {
+      notify({
+        type: "error",
+        title: "Not allowed",
+        message: "Student number not found in the allowed list.",
+        ms: 6000,
+      });
+      clearProfile();
+      await openProfileModal({
+        force: true,
+        errorText: "Student number not found. Try again.",
+      });
+      return;
+    }
+
+    if (resp.status === 409 && data?.error === "Already booked once") {
+      notify({
+        type: "error",
+        title: "Already booked",
+        message: "This student number has already booked a slot.",
+        ms: 6000,
+      });
+      return;
+    }
+
+    if (resp.status === 409 && data?.error === "Slot already booked") {
+      disableSlot(slot, true);
+      serverBookedSet.add(slot.dataset.slot);
+      if (data && data.manageToken) showManageLink(data.manageToken);
+      notify({
+        type: "warn",
+        title: "Slot taken",
+        message: "That time slot is already booked. Please choose another.",
+        ms: 6000,
+      });
+      return;
+    }
+
+    if (resp.status === 500 && data?.error === "db_error") {
+      notify({
+        type: "error",
+        title: "Server error",
+        message: "Database error. Please try again in a moment.",
+        ms: 7000,
+      });
+      return;
+    }
+
+    notify({
+      type: "error",
+      title: "Booking failed",
+      message: data?.error || `Cannot book (${resp.status})`,
+      ms: 6000,
+    });
+    return;
+  }
+
+  // Success
+  serverBookedSet.add(slot.dataset.slot);
+  if (data && data.manageToken) showManageLink(data.manageToken);
+  slot.title = "Booked";
+  disableSlot(slot, true);
+
+  notify({
+    type: "success",
+    title: "Booked",
+    message: "Your slot has been reserved.",
+    ms: 5000,
+  });
+});
+});
+
+  // ---- Pagination by day cards (Available / Previous) ----
+  const perPage = 2;
+  let page = 1;
+
+  function getActiveGrid() {
+    return activeTabName === "previous" && previousGrid ? previousGrid : grid;
+  }
+
+  function getActiveCards() {
+    const g = getActiveGrid();
+    if (!g) return [];
+    return Array.from(g.querySelectorAll(".day-card"));
+  }
+
+  function render() {
+    const cards = getActiveCards();
+    const totalPages = Math.max(1, Math.ceil(cards.length / perPage));
+
+    if (page > totalPages) page = totalPages;
+
+    const start = (page - 1) * perPage;
+    const end = start + perPage;
+
+    cards.forEach((card, i) => {
+      card.style.display = i >= start && i < end ? "" : "none";
+    });
+
+    // hide cards in the non-active grid (so switching tabs doesn't show stale page)
+    const otherGrid = getActiveGrid() === grid ? previousGrid : grid;
+    if (otherGrid) otherGrid.querySelectorAll(".day-card").forEach((c) => (c.style.display = ""));
+
+    // pager text
+    pageInfo.textContent = cards.length ? `Page ${page} / ${totalPages}` : "";
+
+    const disablePager = cards.length === 0;
+    if (pagerWrap) pagerWrap.classList.toggle("hidden", disablePager);
+    prevBtn.disabled = disablePager || page === 1;
+    nextBtn.disabled = disablePager || page === totalPages;
+
+    prevBtn.classList.toggle("opacity-50", prevBtn.disabled);
+    prevBtn.classList.toggle("cursor-not-allowed", prevBtn.disabled);
+    nextBtn.classList.toggle("opacity-50", nextBtn.disabled);
+    nextBtn.classList.toggle("cursor-not-allowed", nextBtn.disabled);
+  }
+
+  prevBtn.addEventListener("click", () => {
+    if (page > 1) {
+      page--;
+      render();
+      document.getElementById("appointmentsSection")
+        ?.scrollIntoView({ behavior: "smooth", block: "start" });
+    }
+  });
+
+  nextBtn.addEventListener("click", () => {
+    const cards = getActiveCards();
+    const totalPages = Math.max(1, Math.ceil(cards.length / perPage));
+    if (page < totalPages) {
+      page++;
+      render();
+      document.getElementById("appointmentsSection")
+        ?.scrollIntoView({ behavior: "smooth", block: "start" });
+    }
+  });
+
+function openCheckModal() {
+  return new Promise((resolve) => {
+    const modal = document.getElementById("checkModal");
+    const form = document.getElementById("checkForm");
+    const snEl = document.getElementById("checkStudentNo");
+    const errEl = document.getElementById("checkError");
+    const cancelBtn = document.getElementById("checkCancel");
+
+    errEl.classList.add("hidden");
+    errEl.textContent = "";
+    snEl.value = "";
+
+    modal.classList.remove("hidden");
+    snEl.focus();
+
+    function close(val) {
+      modal.classList.add("hidden");
+      form.removeEventListener("submit", onSubmit);
+      cancelBtn.removeEventListener("click", onCancel);
+      resolve(val);
+    }
+
+    function onCancel() { close(null); }
+
+    function onSubmit(e) {
+      e.preventDefault();
+      const sn = snEl.value.trim();
+      if (!sn) {
+        errEl.textContent = "Please enter your student number.";
+        errEl.classList.remove("hidden");
+        return;
+      }
+      close(sn);
+    }
+
+    form.addEventListener("submit", onSubmit);
+    cancelBtn.addEventListener("click", onCancel);
+  });
+}
+
+async function checkAppointmentFlow() {
+  const studentNo = await openCheckModal();
+  if (!studentNo) return;
+
+  let resp;
+  try {
+    resp = await fetch(`/api/appointment/${encodeURIComponent(studentNo)}`, { cache: "no-store" });
+  } catch {
+    notify({ type: "error", title: "Connection problem", message: "Cannot reach the server. Try again.", ms: 6000 });
+    return;
+  }
+
+  const data = await resp.json().catch(() => ({}));
+
+  if (!resp.ok) {
+    if (resp.status === 404 && data?.error === "not_found") {
+      notify({ type: "warn", title: "No booking found", message: "No appointment exists for this student number.", ms: 6000 });
+      return;
+    }
+    notify({ type: "error", title: "Check failed", message: data?.error || `Error (${resp.status})`, ms: 6000 });
+    return;
+  }
+
+  const b = data.booking || {};
+  notify({
+  type: "success",
+  title: "Appointment found",
+  message: `Slot: ${b.slot} • Name: ${b.name || ""}`,
+  ms: 0, // ✅ stays until dismissed
+});
+}
+  render();
+  window.addEventListener("load", render);
 });

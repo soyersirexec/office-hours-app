@@ -371,13 +371,12 @@ async function getGoogleClient() {
 }
 
 function slotToGCalTimes(slot) {
-  // expected slot: YYYY-MM-DD-HH-MM  (but we parse safely even if extra dashes exist)
   const parts = String(slot).split("-");
   if (parts.length < 5) throw new Error("Invalid slot format: " + slot);
 
-  const mm = parts.pop();      // last
-  const hh = parts.pop();      // second last
-  const date = parts.join("-"); // remaining is YYYY-MM-DD
+  const mm = parts.pop();
+  const hh = parts.pop();
+  const date = parts.join("-"); // YYYY-MM-DD
 
   const start = `${date}T${hh}:${mm}:00+03:00`;
 
@@ -396,7 +395,7 @@ async function createGoogleCalendarEvent({ slot, name, studentNo, email }) {
     if (!calendar) return;
 
     const { start, end } = slotToGCalTimes(slot);
-
+    console.log("GCAL slot/times", { slot, start, end });
     await calendar.events.insert({
   calendarId: GOOGLE_CALENDAR_ID,
   requestBody: {

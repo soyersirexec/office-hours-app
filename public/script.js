@@ -311,61 +311,77 @@ document.addEventListener("DOMContentLoaded", async () => {
   movePastDays();
 
 
-  // ---- Load bookings from server + apply on UI ----
-  let serverBooked = {};
+  // ---- Load booked slot IDs from server + apply on UI ----
+  // /api/availability returns: { booked: ["YYYY-MM-DDTHH:mm", ...] }
+  let bookedSet = new Set();
 
   async function loadBookedFromServer() {
     try {
       const resp = await fetch("/api/availability", { cache: "no-store" });
-      if (!resp.ok) return {};
-      return await resp.json();
+      if (!resp.ok) return [];
+      const data = await resp.json();
+      return Array.isArray(data?.booked) ? data.booked : [];
     } catch {
-      return {};
+      return [];
     }
   }
 
-  serverBooked = await loadBookedFromServer();
-
-  // Apply server bookings (disable ONLY the booked slot)
-  document.querySelectorAll(".slot[data-slot]").forEach((btn) => {
-  const booking = serverBooked[btn.dataset.slot];
-
-  if (booking) {
-    disableSlot(btn, true);
-    btn.classList.add("booked-slot");
-
-    if (booking.name) {
-  btn.title = `Booked by: ${maskName(booking.name)}`;
-} else {
-  btn.title = "Booked";
-}
-  } else {
-    btn.classList.remove("booked-slot"); // 🔥 ensure free slots stay clean
-    btn.title = "";
+  function applyBookedToUI() {
+    document.querySelectorAll(".slot[data-slot]").forEach((btn) => {
+      const isBooked = bookedSet.has(btn.dataset.slot);
+      if (isBooked) {
+        disableSlot(btn, true);
+        btn.classList.add("booked-slot");
+        btn.title = "Booked";
+      } else {
+        // Don't re-enable past-day disabled buttons
+        if (!btn.closest(".past-day")) {
+          btn.disabled = false;
+          btn.classList.remove("cursor-not-allowed", "opacity-80", "opacity-70", "bg-gray-400", "bg-gray-200");
+          // restore your green styling (both variants used in your CSS)
+          btn.classList.add("bg-green-500", "hover:bg-green-600", "active:scale-95");
+        }
+        btn.classList.remove("booked-slot");
+        btn.title = "";
+      }
+    });
   }
-});
+
+  // initial load
+  bookedSet = new Set(await loadBookedFromServer());
+  applyBookedToUI();
+
+  // keep availability fresh without requiring refresh ("live-ish")
+  setInterval(async () => {
+    const latest = await loadBookedFromServer();
+    // avoid churn if nothing changed
+    if (latest.length !== bookedSet.size || latest.some((s) => !bookedSet.has(s))) {
+      bookedSet = new Set(latest);
+      applyBookedToUI();
+    }
+  }, 10000);
 
   // ---- Click booking ----
   document.querySelectorAll(".slot[data-slot]").forEach((slot) => {
     slot.addEventListener("click", async () => {
-  if (slot.disabled) return;
+      if (slot.disabled) return;
 
-  // Block if this specific slot is already booked
-  if (serverBooked[slot.dataset.slot]) {
-    slot.classList.add("booked-slot");   // 🔒 add only here
-slot.title = `Booked by: ${maskName(profile.name)}`;
-    disableSlot(slot, true);
-    notify({
-      type: "warn",
-      title: "Slot taken",
-      message: "That time slot is already booked. Please choose another.",
-    });
-    return;
-  }
+      // Block if this specific slot is already booked (client-side fast path)
+      if (bookedSet.has(slot.dataset.slot)) {
+        disableSlot(slot, true);
+        slot.classList.add("booked-slot");
+        slot.title = "Booked";
+        notify({
+          type: "warn",
+          title: "Slot taken",
+          message: "That time slot is already booked. Please choose another.",
+        });
+        return;
+      }
 
-  // Always ask for student info (shared device friendly)
-  const profile = await openProfileModal({ force: true });
-  if (!profile) return;
+      // Always ask for student info (shared device friendly)
+      const profile = await openProfileModal({ force: true });
+      if (!profile) return;
 
   let resp;
   try {
@@ -418,9 +434,22 @@ slot.title = `Booked by: ${maskName(profile.name)}`;
       return;
     }
 
+    // Slot just got taken by someone else — update UI immediately
+    if (resp.status === 409 && data?.error === "Already booked") {
+      bookedSet.add(slot.dataset.slot);
+      applyBookedToUI();
+      notify({
+        type: "warn",
+        title: "Slot taken",
+        message: "Someone booked that slot just now. Please pick another time.",
+        ms: 6000,
+      });
+      return;
+    }
+
     if (resp.status === 409 && data?.error === "Slot already booked") {
-      disableSlot(slot, true);
-      if (data && data.manageToken) showManageLink(data.manageToken);
+      bookedSet.add(slot.dataset.slot);
+      applyBookedToUI();
       notify({
         type: "warn",
         title: "Slot taken",
@@ -449,10 +478,9 @@ slot.title = `Booked by: ${maskName(profile.name)}`;
     return;
   }
 
-  // Success
-  serverBooked[slot.dataset.slot] = { bookedAt: Date.now(), name: profile.name };
-  slot.title = `Booked by: ${profile.name}`;
-  disableSlot(slot, true);
+  // Success — update local availability immediately
+  bookedSet.add(slot.dataset.slot);
+  applyBookedToUI();
 
   notify({
     type: "success",

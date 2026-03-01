@@ -371,12 +371,12 @@ async function getGoogleClient() {
 }
 
 function slotToGCalTimes(slot) {
-  const parts = String(slot).split("-");
+  const parts = String(slot).trim().split("-");
   if (parts.length < 5) throw new Error("Invalid slot format: " + slot);
 
   const mm = parts.pop();
   const hh = parts.pop();
-  const date = parts.join("-"); // YYYY-MM-DD
+  const date = parts.join("-");
 
   const start = `${date}T${hh}:${mm}:00+03:00`;
 
@@ -395,7 +395,19 @@ async function createGoogleCalendarEvent({ slot, name, studentNo, email }) {
     if (!calendar) return;
 
     const { start, end } = slotToGCalTimes(slot);
-    console.log("GCAL slot/times", { slot, start, end });
+    console.log("GCAL INPUT", { slot });
+
+console.log("GCAL TIMES RAW", { start, end });
+
+const startMs = Date.parse(start);
+const endMs = Date.parse(end);
+
+if (!Number.isFinite(startMs) || !Number.isFinite(endMs)) {
+  throw new Error(`Invalid start/end produced: start="${start}" end="${end}"`);
+}
+if (endMs <= startMs) {
+  throw new Error(`Empty time range: start="${start}" end="${end}"`);
+}
     await calendar.events.insert({
   calendarId: GOOGLE_CALENDAR_ID,
   requestBody: {

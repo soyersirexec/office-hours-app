@@ -2,11 +2,6 @@ let notifyTimer = null;
 function showManageLink(token) {
   const url = `${location.origin}/manage.html?token=${encodeURIComponent(token)}`;
 
-  // reuse your existing notify if you want, otherwise basic alert:
-  if (typeof showNotify === "function") {
-    alert("Booked! Check your email for the manage link.");
-    return;
-  }
 
   window.prompt("Manage / cancel / change link (copy):", url);
 }
@@ -485,7 +480,7 @@ slot.title = 'Booked';
   notify({
     type: "success",
     title: "Booked",
-    message: "Your slot has been reserved.",
+    message: "Booked! Check your email for the manage link.",
     ms: 5000,
   });
 });

@@ -481,6 +481,9 @@ slot.title = 'Booked';
     message: "Booked! Check your email for the manage link.",
     ms: 5000,
   });
+ // instant UI update (don't wait for polling / reload)
+btn.disabled = true;
+btn.classList.add("booked"); 
 });
 });
 

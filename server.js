@@ -538,16 +538,25 @@ app.post("/api/book", async (req, res) => {
       return res.status(409).json({ ok: false, error: "Slot already booked" });
     }
 
-    // fire-and-forget email (so UI response isn't delayed)
-    sendManageLinkEmail({ to: em, name: nm, slot, token: manageToken }).catch((e) =>
-      console.error("EMAIL SEND ERROR:", e)
-    );
-    createGoogleCalendarEvent({
-  slot,
-  name: nm,
-  studentNo: sn,
-  email: em,
-});
+    // respond immediately (don't wait for email/calendar)
+res.json({ ok: true, manageToken });
+
+// fire-and-forget email
+sendManageLinkEmail({ to: em, name: nm, slot, token: manageToken }).catch((e) =>
+  console.error("EMAIL SEND ERROR:", e)
+);
+
+// fire-and-forget Google Calendar (works whether async or not)
+Promise.resolve(
+  createGoogleCalendarEvent({
+    slot,
+    name: nm,
+    studentNo: sn,
+    email: em,
+  })
+).catch((e) => console.error("GCAL ERROR:", e));
+
+return;
 
     return res.json({ ok: true, manageToken });
   } catch (err) {

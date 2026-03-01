@@ -618,25 +618,18 @@ app.post("/api/book", async (req, res) => {
     // respond immediately (don't wait for email/calendar)
 res.json({ ok: true, manageToken });
 
-// fire-and-forget email
-sendManageLinkEmail({ to: em, name: nm, slot, token: manageToken }).catch((e) =>
-  console.error("EMAIL SEND ERROR:", e)
-);
 
-/// Fire-and-forget Google Calendar (never block the API response)
-ccreateGoogleCalendarEvent({ slot, name: nm, studentNo: sn, email: em })
+// Fire-and-forget Google Calendar (never block the API response)
+createGoogleCalendarEvent({ slot, name: nm, studentNo: sn, email: em })
   .catch((e) => console.error("GCAL ERROR:", e?.message || e));
 
-return;
-
-    return res.json({ ok: true, manageToken });
+// respond once (include manageToken if you use it)
+return res.json({ ok: true, manageToken });
   } catch (err) {
-    if (err && err.code === "23505") {
-      return res.status(409).json({ ok: false, error: "Already booked once" });
-    }
-    console.error("BOOK ERROR:", err);
-    return res.status(500).json({ ok: false, error: "db_error" });
-  }
+  console.error("BOOK ERROR:", err);
+  if (res.headersSent) return;
+  return res.status(500).json({ ok: false, error: "Server error" });
+}
 });
 
 // Manage lookup by token

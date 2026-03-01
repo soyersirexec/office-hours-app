@@ -66,6 +66,7 @@ if (!token) {
 async function load() {
   msg.textContent = "";
   changeBtn.disabled = true;
+  cancelBtn.disabled = false; // ✅ re-enable cancel button on reload
 
   const resp = await fetch(`/api/manage?token=${encodeURIComponent(token)}`, { cache: "no-store" });
   const data = await resp.json().catch(() => ({}));
@@ -74,8 +75,8 @@ async function load() {
     return;
   }
 
-  const b = data.booking || {};   // ✅ define b
-  currentSlot = b.slot || null;   // ✅ use b
+  const b = data.booking || {};
+  currentSlot = b.slot || null;
 
   info.innerHTML = `
     <div><b>Name:</b> ${escapeHtml(b.name || "")}</div>

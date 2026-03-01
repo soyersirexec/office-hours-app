@@ -331,11 +331,26 @@ function applyBookedStateToUI(bookedSet) {
     const slotId = btn.dataset.slot;
     const isBooked = bookedSet.has(slotId);
 
-    if (isBooked) {
-      disableSlot(btn, true);
-      btn.classList.add("booked-slot");
-      btn.title = "Booked";
-    } else {
+    // 🔒 Disable if more than 10 days ahead
+    const slotDate = new Date(slotId.slice(0, 10));
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    const maxDate = new Date(today);
+    maxDate.setDate(maxDate.getDate() + 10);
+
+    const isTooFar = slotDate > maxDate;
+
+    if (isBooked || isTooFar) {
+  disableSlot(btn, true);
+
+  if (isBooked) {
+    btn.classList.add("booked-slot");
+    btn.title = "Booked";
+  } else {
+    btn.title = "Available within 10 days only";
+  }
+} else {
       // If it was previously marked booked, restore it (so cancel/change shows as available)
       if (btn.classList.contains("booked-slot")) {
         btn.classList.remove("booked-slot");
@@ -384,7 +399,6 @@ slot.title = 'Booked';
 
   // Always ask for student info (shared device friendly)
   const profile = await openProfileModal({ force: true });
-  msg.textContent = "Booking..."; 
   if (!profile) return;
 
   let resp;

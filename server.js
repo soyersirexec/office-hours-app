@@ -291,6 +291,8 @@ function escapeHtml(s) {
     .replaceAll("'", "&#039;");
 }
 // ===== Google Calendar integration =====
+const { google } = require("googleapis");
+
 const GOOGLE_CALENDAR_ID = process.env.GOOGLE_CALENDAR_ID;
 let _gcalClient = null;
 
@@ -298,47 +300,71 @@ function loadServiceAccountCreds() {
   const raw = process.env.GOOGLE_SERVICE_ACCOUNT_JSON;
   const b64 = process.env.GOOGLE_SERVICE_ACCOUNT_JSON_B64;
 
-  try {
-    if (raw && raw.trim().startsWith("{")) return JSON.parse(raw);
-  } catch {}
-
-  try {
-    if (b64 && b64.trim()) {
+  // Prefer base64 if present (most reliable for multi-line keys on Render)
+  if (b64 && b64.trim()) {
+    try {
       const decoded = Buffer.from(b64.trim(), "base64").toString("utf8");
-      return JSON.parse(decoded);
+      const creds = JSON.parse(decoded);
+      // Normalize private_key newlines if they got escaped
+      if (creds.private_key) creds.private_key = creds.private_key.replace(/\\n/g, "\n");
+      return creds;
+    } catch (e) {
+      console.error("GCAL AUTH ERROR: failed to parse GOOGLE_SERVICE_ACCOUNT_JSON_B64:", e?.message || e);
+      return null;
     }
-  } catch {}
+  }
+
+  // Fallback to raw JSON env var (less common)
+  if (raw && raw.trim()) {
+    try {
+      const creds = JSON.parse(raw.trim());
+      if (creds.private_key) creds.private_key = creds.private_key.replace(/\\n/g, "\n");
+      return creds;
+    } catch (e) {
+      console.error("GCAL AUTH ERROR: failed to parse GOOGLE_SERVICE_ACCOUNT_JSON:", e?.message || e);
+      return null;
+    }
+  }
 
   return null;
 }
 
-function getGoogleClient() {
+async function getGoogleClient() {
   if (_gcalClient) return _gcalClient;
 
-  const creds = loadServiceAccountCreds();
-  if (!creds) {
-    console.log("GCAL: disabled (missing GOOGLE_SERVICE_ACCOUNT_JSON or GOOGLE_SERVICE_ACCOUNT_JSON_B64)");
+  if (!GOOGLE_CALENDAR_ID) {
+    console.log("GCAL: disabled (missing GOOGLE_CALENDAR_ID)");
     return null;
   }
 
-  const pk = (creds.private_key || "").replace(/\\n/g, "\n").trim();
-  const ce = (creds.client_email || "").trim();
+  const creds = loadServiceAccountCreds();
+  if (!creds) {
+    console.log("GCAL: disabled (missing or invalid service account creds)");
+    return null;
+  }
 
-  if (!pk || !ce) {
+  const clientEmail = (creds.client_email || "").trim();
+  const privateKey = (creds.private_key || "").trim();
+
+  if (!clientEmail || !privateKey) {
     console.error("GCAL AUTH ERROR: missing client_email/private_key in creds");
     return null;
   }
 
-  const { google } = require("googleapis");
-  const auth = new google.auth.JWT(
-    ce,
-    null,
-    pk,
-    ["https://www.googleapis.com/auth/calendar"]
-  );
+  // JWT auth for service account
+  const auth = new google.auth.JWT({
+    email: clientEmail,
+    key: privateKey,
+    scopes: ["https://www.googleapis.com/auth/calendar"],
+  });
 
-  // Force token fetch so auth problems show clearly
-  auth.authorize().catch(e => console.error("GCAL AUTH ERROR:", e?.message || e));
+  // Force token fetch so auth problems show clearly and early
+  try {
+    await auth.authorize();
+  } catch (e) {
+    console.error("GCAL AUTH ERROR:", e?.message || e);
+    return null;
+  }
 
   _gcalClient = google.calendar({ version: "v3", auth });
   return _gcalClient;
@@ -350,20 +376,23 @@ function slotToGCalTimes(slot) {
   const hh = slot.slice(11, 13);
   const mm = slot.slice(14, 16);
 
+  // We'll build an ISO time string. You already set timezone in API call.
   const start = `${date}T${hh}:${mm}:00`;
+
+  // Use +03:00 offset only to compute end time reliably
   const endDate = new Date(`${start}+03:00`);
-  endDate.setMinutes(endDate.getMinutes() + 45); // session duration
+  endDate.setMinutes(endDate.getMinutes() + 45);
 
   const pad = (n) => String(n).padStart(2, "0");
-  const end = `${endDate.getFullYear()}-${pad(endDate.getMonth()+1)}-${pad(endDate.getDate())}T${pad(endDate.getHours())}:${pad(endDate.getMinutes())}:00`;
+  const end = `${endDate.getFullYear()}-${pad(endDate.getMonth() + 1)}-${pad(endDate.getDate())}T${pad(endDate.getHours())}:${pad(endDate.getMinutes())}:00`;
 
   return { start, end };
 }
 
 async function createGoogleCalendarEvent({ slot, name, studentNo, email }) {
   try {
-    const calendar = getGoogleClient();
-    if (!calendar || !GOOGLE_CALENDAR_ID) return;
+    const calendar = await getGoogleClient();
+    if (!calendar) return;
 
     const { start, end } = slotToGCalTimes(slot);
 

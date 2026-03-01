@@ -969,7 +969,35 @@ app.get("/api/admin/bookings", requireAdmin, async (req, res) => {
 app.delete("/api/admin/cancel/:slot", requireAdmin, async (req, res) => {
   const slot = req.params.slot;
   try {
+    // Fetch booking details first so we can notify + clean up calendar
+    const cur = await pool.query(
+      `SELECT slot, name, student_no, email, gcal_event_id
+       FROM bookings
+       WHERE slot = $1
+       LIMIT 1`,
+      [slot]
+    );
+
+    if (cur.rowCount === 0) {
+      return res.status(404).json({ ok: false, error: "not_found" });
+    }
+
+    const b = cur.rows[0];
+
     await pool.query("DELETE FROM bookings WHERE slot=$1", [slot]);
+
+    // fire-and-forget cancellation email
+    sendCancelledEmail({ to: b.email, name: b.name, oldSlot: b.slot }).catch((e) =>
+      console.error("ADMIN CANCEL EMAIL ERROR:", e?.message || e)
+    );
+
+    // fire-and-forget gcal delete
+    if (b.gcal_event_id) {
+      deleteGoogleCalendarEvent({ eventId: b.gcal_event_id }).catch((e) =>
+        console.error("ADMIN CANCEL GCAL DELETE ERROR:", e?.message || e)
+      );
+    }
+
     return res.json({ ok: true, message: "Cancelled" });
   } catch (err) {
     console.error("ADMIN CANCEL ERROR:", err);

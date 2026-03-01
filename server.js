@@ -502,14 +502,6 @@ async function deleteGoogleCalendarEvent({ eventId }) {
   }
 }
 
-module.exports = {
-  createGoogleCalendarEvent,
-  updateGoogleCalendarEvent,
-  deleteGoogleCalendarEvent,
-};
-
-// export if you keep this in its own file
-module.exports = { createGoogleCalendarEvent };
 // ---------- Allow-list (CSV of student numbers only) ----------
 const allowedCsvPath = path.join(__dirname, "allowed_students.csv");
 function normStudentNo(v) {
@@ -661,7 +653,7 @@ VALUES ($1, $2, $3, $4, $5, $6)
       RETURNING slot
     `;
 
-    const result = await pool.query(q, [slot, nm, sn, em, manageTokenHash]);
+    const result = await pool.query(q, [slot, nm, sn, em, manageTokenHash, null]);
 
     if (result.rowCount === 0) {
       return res.status(409).json({ ok: false, error: "Slot already booked" });
@@ -725,7 +717,7 @@ app.post("/api/manage/cancel", async (req, res) => {
 
     // get booking first so we can email details
     const cur = await pool.query(
-      `SELECT slot, name, email, gcal_event_id
+      `SELECT slot, name, student_no, email, gcal_event_id
        FROM bookings
        WHERE manage_token_hash = $1
        LIMIT 1`,
@@ -779,7 +771,7 @@ app.post("/api/manage/change", async (req, res) => {
     const tokenHash = crypto.createHash("sha256").update(token).digest("hex");
 
     const cur = await client.query(
-      `SELECT slot, name, email, gcal_event_id
+      `SELECT slot, name, student_no, email, gcal_event_id
        FROM bookings
        WHERE manage_token_hash = $1
        LIMIT 1`,

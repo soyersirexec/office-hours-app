@@ -724,7 +724,10 @@ app.post("/api/manage/cancel", async (req, res) => {
       [tokenHash]
     );
 
-    if (!cur.rows.length) return res.status(404).json({ ok: false, error: "not_found" });
+    if (!cur.rows.length) {
+      // Idempotent cancel: booking already cancelled/deleted
+      return res.json({ ok: true, alreadyCancelled: true });
+    }
 
     const b = cur.rows[0];
 
@@ -735,7 +738,10 @@ app.post("/api/manage/cancel", async (req, res) => {
       [tokenHash]
     );
 
-    if (result.rowCount === 0) return res.status(404).json({ ok: false, error: "not_found" });
+    if (result.rowCount === 0) {
+      // Idempotent cancel: booking already cancelled/deleted
+      return res.json({ ok: true, alreadyCancelled: true });
+    }
 
     // fire-and-forget email
     sendCancelledEmail({ to: b.email, name: b.name, oldSlot: b.slot }).catch((e) =>

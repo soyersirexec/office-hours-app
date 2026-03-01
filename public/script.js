@@ -384,6 +384,7 @@ slot.title = 'Booked';
 
   // Always ask for student info (shared device friendly)
   const profile = await openProfileModal({ force: true });
+  msg.textContent = "Booking..."; 
   if (!profile) return;
 
   let resp;

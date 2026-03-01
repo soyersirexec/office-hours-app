@@ -566,6 +566,7 @@ const pool = new Pool({
     await pool.query(
       `ALTER TABLE bookings ADD COLUMN IF NOT EXISTS manage_token_created_at TIMESTAMPTZ NOT NULL DEFAULT NOW();`
     );
+    await pool.query(`ALTER TABLE bookings ADD COLUMN IF NOT EXISTS gcal_event_id TEXT;`);
 
     await pool.query(`
       CREATE UNIQUE INDEX IF NOT EXISTS bookings_manage_token_hash_unique
@@ -651,7 +652,7 @@ app.post("/api/book", async (req, res) => {
       RETURNING slot
     `;
 
-    const result = await pool.query(q, [slot, nm, sn, em, manageTokenHash, null]);
+    const result = await pool.query(q, [slot, nm, sn, em, manageTokenHash]);
 
     if (result.rowCount === 0) {
       return res.status(409).json({ ok: false, error: "Slot already booked" });
@@ -662,16 +663,18 @@ app.post("/api/book", async (req, res) => {
       console.error("EMAIL ERROR:", e?.message || e)
     );
 
-    // respond immediately (don't wait for email/calendar)
-res.json({ ok: true, manageToken });
+    // Fire-and-forget Google Calendar: create event, then store event id on the booking
+    createGoogleCalendarEvent({ slot, name: nm, studentNo: sn, email: em })
+      .then((eventId) => {
+        if (!eventId) return;
+        return pool
+          .query("UPDATE bookings SET gcal_event_id = $1 WHERE manage_token_hash = $2", [eventId, manageTokenHash])
+          .catch((e) => console.error("GCAL STORE ERROR:", e?.message || e));
+      })
+      .catch((e) => console.error("GCAL ERROR:", e?.message || e));
 
-
-// Fire-and-forget Google Calendar (never block the API response)
-createGoogleCalendarEvent({ slot, name: nm, studentNo: sn, email: em })
-  .catch((e) => console.error("GCAL ERROR:", e?.message || e));
-
-// respond once (include manageToken if you use it)
-return res.json({ ok: true, manageToken });
+    // respond ONCE (don't wait for email/calendar)
+    return res.json({ ok: true, manageToken });
   } catch (err) {
   console.error("BOOK ERROR:", err);
   if (res.headersSent) return;
@@ -714,7 +717,7 @@ app.post("/api/manage/cancel", async (req, res) => {
 
     // get booking first so we can email details
     const cur = await pool.query(
-      `SELECT slot, name, email
+      `SELECT slot, name, email, gcal_event_id
        FROM bookings
        WHERE manage_token_hash = $1
        LIMIT 1`,
@@ -761,7 +764,7 @@ app.post("/api/manage/change", async (req, res) => {
     const tokenHash = crypto.createHash("sha256").update(token).digest("hex");
 
     const cur = await client.query(
-      `SELECT slot, name, student_no, email
+      `SELECT slot, name, student_no, email, gcal_event_id
        FROM bookings
        WHERE manage_token_hash = $1
        LIMIT 1`,
@@ -789,12 +792,38 @@ app.post("/api/manage/change", async (req, res) => {
     await client.query(`DELETE FROM bookings WHERE manage_token_hash = $1`, [tokenHash]);
 
     await client.query(
-      `INSERT INTO bookings (slot, name, student_no, email, manage_token_hash)
-       VALUES ($1, $2, $3, $4, $5)`,
-      [newSlot, current.name, current.student_no, current.email, tokenHash]
+      `INSERT INTO bookings (slot, name, student_no, email, manage_token_hash, gcal_event_id)
+       VALUES ($1, $2, $3, $4, $5, $6)`,
+      [newSlot, current.name, current.student_no, current.email, tokenHash, current.gcal_event_id || null]
     );
 
     await client.query("COMMIT");
+
+    // fire-and-forget calendar sync
+    if (current.gcal_event_id) {
+      updateGoogleCalendarEvent({
+        eventId: current.gcal_event_id,
+        slot: newSlot,
+        name: current.name,
+        studentNo: current.student_no,
+        email: current.email,
+      }).catch((e) => console.error("GCAL UPDATE ERROR:", e?.message || e));
+    } else {
+      createGoogleCalendarEvent({
+        slot: newSlot,
+        name: current.name,
+        studentNo: current.student_no,
+        email: current.email,
+      })
+        .then((eventId) => {
+          if (!eventId) return;
+          return pool
+            .query("UPDATE bookings SET gcal_event_id = $1 WHERE manage_token_hash = $2", [eventId, tokenHash])
+            .catch((e) => console.error("GCAL STORE ERROR:", e?.message || e));
+        })
+        .catch((e) => console.error("GCAL CREATE ERROR:", e?.message || e));
+    }
+
     sendChangedEmail({
   to: current.email,
   name: current.name,

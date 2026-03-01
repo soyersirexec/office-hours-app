@@ -359,7 +359,7 @@ document.addEventListener("DOMContentLoaded", async () => {
       bookedSet = new Set(latest);
       applyBookedToUI();
     }
-  }, 10000);
+  }, 3000);
 
   // ---- Click booking ----
   document.querySelectorAll(".slot[data-slot]").forEach((slot) => {

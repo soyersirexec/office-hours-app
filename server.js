@@ -2,31 +2,39 @@
 const fs = require("fs");
 const path = require("path");
 
-const express = require("express");
-const { Pool } = require("pg");
-const crypto = require("crypto");
-
 function readSlotsFromIndexHtml() {
-  // try common locations (root + public/)
+  // Try common locations (repo root and /public)
   const candidates = [
     path.join(__dirname, "index.html"),
     path.join(__dirname, "public", "index.html"),
   ];
 
   const htmlPath = candidates.find((p) => fs.existsSync(p));
-  if (!htmlPath) return [];
+  if (!htmlPath) {
+    console.error("ALL-SLOTS: index.html not found in", candidates);
+    return [];
+  }
 
   const html = fs.readFileSync(htmlPath, "utf8");
-
-  // matches: data-slot="2026-03-02-09-30"
-  const re = /data-slot="([^"]+)"/g;
-
+  // Extract values like: data-slot="2026-03-02-09-30"
+  const reSlot = /data-slot="([^"]+)"/g;
   const slots = new Set();
   let m;
-  while ((m = re.exec(html))) slots.add(m[1]);
+  while ((m = reSlot.exec(html))) slots.add(m[1]);
 
-  return Array.from(slots).sort();
+  const out = Array.from(slots);
+  out.sort();
+  if (out.length === 0) {
+    console.error("ALL-SLOTS: no data-slot attributes found in", htmlPath);
+  }
+  return out;
 }
+
+
+const express = require("express");
+const { Pool } = require("pg");
+const crypto = require("crypto");
+
 const app = express();
 const PORT = process.env.PORT || 3000;
 
@@ -132,12 +140,9 @@ function isPastSlot(slot) {
 //   PUBLIC_BASE_URL=https://YOUR-RENDER-URL.onrender.com
 const RESEND_API_KEY = process.env.RESEND_API_KEY;
 const RESEND_FROM = process.env.RESEND_FROM;
-
-
-async function sendManageLinkEmail({ to, name, slot, token }) {
 const PUBLIC_BASE_URL = process.env.PUBLIC_BASE_URL;
 
-
+async function sendManageLinkEmail({ to, name, slot, token }) {
   if (!RESEND_API_KEY || !RESEND_FROM) {
     console.log("EMAIL: disabled (missing RESEND_API_KEY or RESEND_FROM)");
     return;
@@ -148,7 +153,7 @@ const PUBLIC_BASE_URL = process.env.PUBLIC_BASE_URL;
   }
   if (!to) return;
 
-  const manageUrl = `${PUBLIC_BASE_URL}/manage.html?token=${encodeURIComponent(token)}&v=${Date.now()}`;
+  const manageUrl = `${PUBLIC_BASE_URL}/manage.html?token=${encodeURIComponent(token)}`;
 
   const subject = "Speaking Center Appointment – Manage Link";
   const text =
@@ -189,9 +194,7 @@ const PUBLIC_BASE_URL = process.env.PUBLIC_BASE_URL;
   } catch (e) {
     console.error("EMAIL: Resend error:", e);
   }
-
 }
-
 async function sendCancelledEmail({ to, name, oldSlot }) {
   if (!RESEND_API_KEY || !RESEND_FROM) return;
   if (!to) return;
@@ -535,25 +538,18 @@ app.post("/api/book", async (req, res) => {
       return res.status(409).json({ ok: false, error: "Slot already booked" });
     }
 
-    // respond immediately (don't wait for email/calendar)
-res.json({ ok: true, manageToken });
+    // fire-and-forget email (so UI response isn't delayed)
+    sendManageLinkEmail({ to: em, name: nm, slot, token: manageToken }).catch((e) =>
+      console.error("EMAIL SEND ERROR:", e)
+    );
+    createGoogleCalendarEvent({
+  slot,
+  name: nm,
+  studentNo: sn,
+  email: em,
+});
 
-// fire-and-forget email
-sendManageLinkEmail({ to: em, name: nm, slot, token: manageToken }).catch((e) =>
-  console.error("EMAIL SEND ERROR:", e)
-);
-
-// fire-and-forget Google Calendar (works whether function is async or not)
-Promise.resolve(
-  createGoogleCalendarEvent({
-    slot,
-    name: nm,
-    studentNo: sn,
-    email: em,
-  })
-).catch((e) => console.error("GCAL ERROR:", e));
-
-return;
+    return res.json({ ok: true, manageToken });
   } catch (err) {
     if (err && err.code === "23505") {
       return res.status(409).json({ ok: false, error: "Already booked once" });
@@ -751,15 +747,11 @@ app.get("/api/slots", async (req, res) => {
   }
 });
 
-app.get("/api/all-slots", (_req, res) => {
+// All slots (source of truth)
+// All slots (source of truth: parsed from index.html so Manage matches main page)
+app.get("/api/all-slots", (req, res) => {
   const slots = readSlotsFromIndexHtml();
-
-  // fallback so it never becomes empty in production
-  if (!slots || slots.length === 0) {
-    console.error("ALL-SLOTS: could not read slots from index.html");
-  }
-
-  res.json({ slots });
+  return res.json(slots);
 });
 
 // Static files
@@ -849,17 +841,7 @@ app.get("/admin", (req, res) => {
 app.get("/admin-login", (req, res) => {
   return res.sendFile(path.join(__dirname, "public", "admin-login.html"));
 });
-app.use((req, res, next) => {
-  // never cache frontend assets; avoids "old version" bugs
-  if (
-    req.path.endsWith(".html") ||
-    req.path.endsWith(".js") ||
-    req.path.endsWith(".css")
-  ) {
-    res.setHeader("Cache-Control", "no-store, max-age=0");
-  }
-  next();
-});
+
 app.use(express.static(path.join(__dirname, "public")));
 
 // Self-ping (Render)

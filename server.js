@@ -386,34 +386,24 @@ function slotToGCalTimes(slot) {
   const parts = s.split("-");
   if (parts.length < 5) return null;
 
-  const mm = parts.pop();
-  const hh = parts.pop();
+  const mm = Number(parts.pop());
+  const hh = Number(parts.pop());
   const date = parts.join("-"); // YYYY-MM-DD
 
-  const y = Number(date.slice(0, 4));
-  const m = Number(date.slice(5, 7));
-  const d = Number(date.slice(8, 10));
-  const H = Number(hh);
-  const M = Number(mm);
+  if (!Number.isFinite(hh) || !Number.isFinite(mm)) return null;
 
-  if (![y, m, d, H, M].every(Number.isFinite)) return null;
+  const startMinutes = hh * 60 + mm;
+  const endMinutes = startMinutes + GCAL_EVENT_MINUTES;
 
-  // Build an RFC3339 datetime in Istanbul timezone.
-  // We include timezone name separately in the request to avoid offset mistakes.
-  const startLocal = `${date}T${String(H).padStart(2, "0")}:${String(M).padStart(2, "0")}:00`;
+  const endH = Math.floor(endMinutes / 60);
+  const endM = endMinutes % 60;
 
-  // Compute end by adding minutes using a Date object with an explicit +03:00 anchor.
-  // This avoids the "empty range" bug from malformed strings.
-  const startForCalc = `${startLocal}+03:00`;
-  const endDate = new Date(startForCalc);
-  if (Number.isNaN(endDate.getTime())) return null;
-
-  endDate.setMinutes(endDate.getMinutes() + GCAL_EVENT_MINUTES);
-
+  // If you never allow slots that cross midnight, this is enough.
+  // (If you *do* allow crossing midnight, tell me and I’ll add date rollover.)
   const pad = (n) => String(n).padStart(2, "0");
-  const endLocal = `${endDate.getFullYear()}-${pad(endDate.getMonth() + 1)}-${pad(endDate.getDate())}T${pad(
-    endDate.getHours()
-  )}:${pad(endDate.getMinutes())}:00`;
+
+  const startLocal = `${date}T${pad(hh)}:${pad(mm)}:00`;
+  const endLocal = `${date}T${pad(endH)}:${pad(endM)}:00`;
 
   return { startLocal, endLocal };
 }

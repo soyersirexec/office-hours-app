@@ -371,20 +371,21 @@ async function getGoogleClient() {
 }
 
 function slotToGCalTimes(slot) {
-  // slot format: YYYY-MM-DD-HH-MM
-  const date = slot.slice(0, 10);
-  const hh = slot.slice(11, 13);
-  const mm = slot.slice(14, 16);
+  // expected slot: YYYY-MM-DD-HH-MM  (but we parse safely even if extra dashes exist)
+  const parts = String(slot).split("-");
+  if (parts.length < 5) throw new Error("Invalid slot format: " + slot);
 
-  // We'll build an ISO time string. You already set timezone in API call.
-  const start = `${date}T${hh}:${mm}:00`;
+  const mm = parts.pop();      // last
+  const hh = parts.pop();      // second last
+  const date = parts.join("-"); // remaining is YYYY-MM-DD
 
-  // Use +03:00 offset only to compute end time reliably
-  const endDate = new Date(`${start}+03:00`);
+  const start = `${date}T${hh}:${mm}:00+03:00`;
+
+  const endDate = new Date(start);
   endDate.setMinutes(endDate.getMinutes() + 45);
 
   const pad = (n) => String(n).padStart(2, "0");
-  const end = `${endDate.getFullYear()}-${pad(endDate.getMonth() + 1)}-${pad(endDate.getDate())}T${pad(endDate.getHours())}:${pad(endDate.getMinutes())}:00`;
+  const end = `${endDate.getFullYear()}-${pad(endDate.getMonth() + 1)}-${pad(endDate.getDate())}T${pad(endDate.getHours())}:${pad(endDate.getMinutes())}:00+03:00`;
 
   return { start, end };
 }
@@ -397,14 +398,14 @@ async function createGoogleCalendarEvent({ slot, name, studentNo, email }) {
     const { start, end } = slotToGCalTimes(slot);
 
     await calendar.events.insert({
-      calendarId: GOOGLE_CALENDAR_ID,
-      requestBody: {
-        summary: `Speaking Center – ${name} (${studentNo})`,
-        description: `Student: ${name}\nStudent No: ${studentNo}\nEmail: ${email}\nSlot: ${slot}`,
-        start: { dateTime: start, timeZone: "Europe/Istanbul" },
-        end: { dateTime: end, timeZone: "Europe/Istanbul" },
-      },
-    });
+  calendarId: GOOGLE_CALENDAR_ID,
+  requestBody: {
+    summary: `Speaking Center – ${name} (${studentNo})`,
+    description: `Student: ${name}\nStudent No: ${studentNo}\nEmail: ${email}\nSlot: ${slot}`,
+    start: { dateTime: start },
+    end: { dateTime: end },
+  },
+});
 
     console.log("GCAL: event created for", slot);
   } catch (err) {

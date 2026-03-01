@@ -74,13 +74,14 @@ async function load() {
     return;
   }
 
-  currentSlot = data.booking ? data.booking.slot : null;
+  const b = data.booking || {};
+currentSlot = b.slot || null;
 
-  info.innerHTML = `
-    <div><b>Name:</b> ${escapeHtml(b.name || "")}</div>
-    <div><b>Student No:</b> ${escapeHtml(b.student_no || "")}</div>
-    <div><b>Current Slot:</b> ${escapeHtml(formatSlot(b.slot))}</div>
-  `;
+info.innerHTML = `
+  <div><b>Name:</b> ${escapeHtml(b.name || "")}</div>
+  <div><b>Student No:</b> ${escapeHtml(b.student_no || "")}</div>
+  <div><b>Current Slot:</b> ${escapeHtml(formatSlot(b.slot))}</div>
+`;
 
   cancelBtn.classList.remove("hidden");
   changeWrap.classList.remove("hidden");

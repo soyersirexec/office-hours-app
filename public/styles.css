@@ -252,3 +252,31 @@
 #appointmentsSection {
   scroll-margin-top: 20px;
 }
+
+/* Improve text rendering */
+body {
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+}
+
+/* Better default text rhythm */
+p, label, span, input, select, button {
+  line-height: 1.5;
+}
+
+/* Slightly tighter headings */
+h1, h2, h3 {
+  letter-spacing: -0.01em;
+  line-height: 1.25;
+}
+
+button {
+  font-weight: 600;
+  letter-spacing: 0.01em;
+}
+
+.slot {
+  font-weight: 500;
+  letter-spacing: 0.01em;
+}

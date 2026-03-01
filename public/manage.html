@@ -66,7 +66,6 @@ if (!token) {
 async function load() {
   msg.textContent = "";
   changeBtn.disabled = true;
-  cancelBtn.disabled = false; // ✅ re-enable cancel button on reload
 
   const resp = await fetch(`/api/manage?token=${encodeURIComponent(token)}`, { cache: "no-store" });
   const data = await resp.json().catch(() => ({}));
@@ -75,8 +74,7 @@ async function load() {
     return;
   }
 
-  const b = data.booking || {};
-  currentSlot = b.slot || null;
+  currentSlot = data.booking ? data.booking.slot : null;
 
   info.innerHTML = `
     <div><b>Name:</b> ${escapeHtml(b.name || "")}</div>
@@ -118,8 +116,20 @@ cancelBtn.onclick = async () => {
     const data = await resp.json().catch(() => ({}));
 
     if (data.ok) {
-      if (msgEl) msgEl.textContent = "Your appointment has been cancelled.";
-      await load();
+      // Keep a visible confirmation (load() clears msg at the start, so don't reload)
+      if (msgEl) msgEl.textContent = data.alreadyCancelled
+        ? "Already cancelled."
+        : "Cancelled ✅";
+
+      currentSlot = null;
+
+      // Hide actions + prevent double clicks
+      if (cancelEl) cancelEl.disabled = true;
+      if (changeEl) changeEl.disabled = true;
+      if (selectEl) selectEl.disabled = true;
+      if (cancelBtn) cancelBtn.classList.add("hidden");
+      if (changeWrap) changeWrap.classList.add("hidden");
+
       return;
     }
 

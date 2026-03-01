@@ -647,11 +647,12 @@ app.post("/api/book", async (req, res) => {
     const manageTokenHash = crypto.createHash("sha256").update(manageToken).digest("hex");
 
     const q = `
-      INSERT INTO bookings (slot, name, student_no, email, manage_token_hash, gcal_event_id)
-VALUES ($1, $2, $3, $4, $5, $6)
-      ON CONFLICT (slot) DO NOTHING
-      RETURNING slot
-    `;
+  INSERT INTO bookings
+  (slot, name, student_no, email, manage_token_hash, gcal_event_id)
+  VALUES ($1, $2, $3, $4, $5, $6)
+  ON CONFLICT (slot) DO NOTHING
+  RETURNING slot
+`;
 
     const result = await pool.query(q, [slot, nm, sn, em, manageTokenHash, null]);
 

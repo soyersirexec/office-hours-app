@@ -296,17 +296,28 @@ const { google } = require("googleapis");
 const GOOGLE_CALENDAR_ID = process.env.GOOGLE_CALENDAR_ID;
 let _gcalClient = null;
 
+const GCAL_TZ = "Europe/Istanbul";
+const GCAL_EVENT_MINUTES = 45;
+const GCAL_TIMEOUT_MS = 8000;
+
+function withTimeout(promise, label) {
+  return Promise.race([
+    promise,
+    new Promise((_, reject) =>
+      setTimeout(() => reject(new Error(`${label} TIMEOUT after ${GCAL_TIMEOUT_MS}ms`)), GCAL_TIMEOUT_MS)
+    ),
+  ]);
+}
+
 function loadServiceAccountCreds() {
   const raw = process.env.GOOGLE_SERVICE_ACCOUNT_JSON;
   const b64 = process.env.GOOGLE_SERVICE_ACCOUNT_JSON_B64;
 
-  // Prefer base64 if present (most reliable for multi-line keys on Render)
   if (b64 && b64.trim()) {
     try {
       const decoded = Buffer.from(b64.trim(), "base64").toString("utf8");
       const creds = JSON.parse(decoded);
-      // Normalize private_key newlines if they got escaped
-      if (creds.private_key) creds.private_key = creds.private_key.replace(/\\n/g, "\n");
+      if (creds.private_key) creds.private_key = String(creds.private_key).replace(/\\n/g, "\n");
       return creds;
     } catch (e) {
       console.error("GCAL AUTH ERROR: failed to parse GOOGLE_SERVICE_ACCOUNT_JSON_B64:", e?.message || e);
@@ -314,11 +325,10 @@ function loadServiceAccountCreds() {
     }
   }
 
-  // Fallback to raw JSON env var (less common)
   if (raw && raw.trim()) {
     try {
       const creds = JSON.parse(raw.trim());
-      if (creds.private_key) creds.private_key = creds.private_key.replace(/\\n/g, "\n");
+      if (creds.private_key) creds.private_key = String(creds.private_key).replace(/\\n/g, "\n");
       return creds;
     } catch (e) {
       console.error("GCAL AUTH ERROR: failed to parse GOOGLE_SERVICE_ACCOUNT_JSON:", e?.message || e);
@@ -339,54 +349,73 @@ async function getGoogleClient() {
 
   const creds = loadServiceAccountCreds();
   if (!creds) {
-    console.log("GCAL: disabled (missing or invalid service account creds)");
+    console.log("GCAL: disabled (missing/invalid service account creds)");
     return null;
   }
 
-  const clientEmail = (creds.client_email || "").trim();
-  const privateKey = (creds.private_key || "").trim();
+  const clientEmail = String(creds.client_email || "").trim();
+  const privateKey = String(creds.private_key || "").trim();
 
   if (!clientEmail || !privateKey) {
     console.error("GCAL AUTH ERROR: missing client_email/private_key in creds");
     return null;
   }
 
-  // JWT auth for service account
   const auth = new google.auth.JWT({
     email: clientEmail,
     key: privateKey,
     scopes: ["https://www.googleapis.com/auth/calendar"],
   });
 
-  // Force token fetch so auth problems show clearly and early
   try {
-    await auth.authorize();
+    await withTimeout(auth.authorize(), "GCAL AUTH");
   } catch (e) {
     console.error("GCAL AUTH ERROR:", e?.message || e);
     return null;
   }
 
   _gcalClient = google.calendar({ version: "v3", auth });
+  console.log("GCAL: ready as", clientEmail, "calendar:", GOOGLE_CALENDAR_ID);
   return _gcalClient;
 }
 
+// Accepts slot like: YYYY-MM-DD-HH-MM  (your app format)
+// Produces RFC3339 using Europe/Istanbul.
 function slotToGCalTimes(slot) {
-  const parts = String(slot).trim().split("-");
-  if (parts.length < 5) throw new Error("Invalid slot format: " + slot);
+  const s = String(slot || "").trim();
+  const parts = s.split("-");
+  if (parts.length < 5) return null;
 
   const mm = parts.pop();
   const hh = parts.pop();
-  const date = parts.join("-");
+  const date = parts.join("-"); // YYYY-MM-DD
 
-  const start = `${date}T${hh}:${mm}:00+03:00`;
+  const y = Number(date.slice(0, 4));
+  const m = Number(date.slice(5, 7));
+  const d = Number(date.slice(8, 10));
+  const H = Number(hh);
+  const M = Number(mm);
 
-  const endDate = new Date(start);
-  endDate.setMinutes(endDate.getMinutes() + 45);
+  if (![y, m, d, H, M].every(Number.isFinite)) return null;
+
+  // Build an RFC3339 datetime in Istanbul timezone.
+  // We include timezone name separately in the request to avoid offset mistakes.
+  const startLocal = `${date}T${String(H).padStart(2, "0")}:${String(M).padStart(2, "0")}:00`;
+
+  // Compute end by adding minutes using a Date object with an explicit +03:00 anchor.
+  // This avoids the "empty range" bug from malformed strings.
+  const startForCalc = `${startLocal}+03:00`;
+  const endDate = new Date(startForCalc);
+  if (Number.isNaN(endDate.getTime())) return null;
+
+  endDate.setMinutes(endDate.getMinutes() + GCAL_EVENT_MINUTES);
 
   const pad = (n) => String(n).padStart(2, "0");
-  const end = `${endDate.getFullYear()}-${pad(endDate.getMonth() + 1)}-${pad(endDate.getDate())}T${pad(endDate.getHours())}:${pad(endDate.getMinutes())}:00+03:00`;
+  const endLocal = `${endDate.getFullYear()}-${pad(endDate.getMonth() + 1)}-${pad(endDate.getDate())}T${pad(
+    endDate.getHours()
+  )}:${pad(endDate.getMinutes())}:00`;
 
-  return { start, end };
+  return { startLocal, endLocal };
 }
 
 async function createGoogleCalendarEvent({ slot, name, studentNo, email }) {
@@ -394,35 +423,44 @@ async function createGoogleCalendarEvent({ slot, name, studentNo, email }) {
     const calendar = await getGoogleClient();
     if (!calendar) return;
 
-    const { start, end } = slotToGCalTimes(slot);
-    console.log("GCAL INPUT", { slot });
+    const times = slotToGCalTimes(slot);
+    if (!times) {
+      console.error("GCAL TIME ERROR: invalid slot format", { slot });
+      return;
+    }
 
-console.log("GCAL TIMES RAW", { start, end });
+    const { startLocal, endLocal } = times;
 
-const startMs = Date.parse(start);
-const endMs = Date.parse(end);
+    // Validate range before sending to Google
+    const startMs = Date.parse(`${startLocal}+03:00`);
+    const endMs = Date.parse(`${endLocal}+03:00`);
+    if (!Number.isFinite(startMs) || !Number.isFinite(endMs) || endMs <= startMs) {
+      console.error("GCAL TIME ERROR: empty/invalid range", { slot, startLocal, endLocal, startMs, endMs });
+      return;
+    }
 
-if (!Number.isFinite(startMs) || !Number.isFinite(endMs)) {
-  throw new Error(`Invalid start/end produced: start="${start}" end="${end}"`);
-}
-if (endMs <= startMs) {
-  throw new Error(`Empty time range: start="${start}" end="${end}"`);
-}
-    await calendar.events.insert({
-  calendarId: GOOGLE_CALENDAR_ID,
-  requestBody: {
-    summary: `Speaking Center – ${name} (${studentNo})`,
-    description: `Student: ${name}\nStudent No: ${studentNo}\nEmail: ${email}\nSlot: ${slot}`,
-    start: { dateTime: start },
-    end: { dateTime: end },
-  },
-});
+    await withTimeout(
+      calendar.events.insert({
+        calendarId: GOOGLE_CALENDAR_ID,
+        requestBody: {
+          summary: `Speaking Center – ${name} (${studentNo})`,
+          description: `Student: ${name}\nStudent No: ${studentNo}\nEmail: ${email}\nSlot: ${slot}`,
+          start: { dateTime: startLocal, timeZone: GCAL_TZ },
+          end: { dateTime: endLocal, timeZone: GCAL_TZ },
+        },
+      }),
+      "GCAL INSERT"
+    );
 
     console.log("GCAL: event created for", slot);
   } catch (err) {
     console.error("GCAL CREATE ERROR:", err?.message || err);
   }
 }
+
+module.exports = {
+  createGoogleCalendarEvent,
+};
 // ---------- Allow-list (CSV of student numbers only) ----------
 const allowedCsvPath = path.join(__dirname, "allowed_students.csv");
 function normStudentNo(v) {
@@ -587,15 +625,13 @@ sendManageLinkEmail({ to: em, name: nm, slot, token: manageToken }).catch((e) =>
   console.error("EMAIL SEND ERROR:", e)
 );
 
-// fire-and-forget Google Calendar (works whether async or not)
-Promise.resolve(
-  createGoogleCalendarEvent({
-    slot,
-    name: nm,
-    studentNo: sn,
-    email: em,
-  })
-).catch((e) => console.error("GCAL ERROR:", e));
+/// Fire-and-forget Google Calendar (never block the API response)
+createGoogleCalendarEvent({
+  slot,
+  name: nm,
+  studentNo: sn,
+  email: em,
+}).catch((e) => console.error("GCAL ERROR:", e?.message || e));
 
 return;
 

@@ -113,7 +113,7 @@ const RESEND_API_KEY = process.env.RESEND_API_KEY;
 const RESEND_FROM = process.env.RESEND_FROM;
 const PUBLIC_BASE_URL = process.env.PUBLIC_BASE_URL;
 
-const manageUrl = `${PUBLIC_BASE_URL}/manage.html?token=${encodeURIComponent(token)}&v=${Date.now()}`;
+
   if (!RESEND_API_KEY || !RESEND_FROM) {
     console.log("EMAIL: disabled (missing RESEND_API_KEY or RESEND_FROM)");
     return;
@@ -165,7 +165,7 @@ const manageUrl = `${PUBLIC_BASE_URL}/manage.html?token=${encodeURIComponent(tok
   } catch (e) {
     console.error("EMAIL: Resend error:", e);
   }
-}
+
 async function sendCancelledEmail({ to, name, oldSlot }) {
   if (!RESEND_API_KEY || !RESEND_FROM) return;
   if (!to) return;

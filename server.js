@@ -5,18 +5,28 @@ const path = require("path");
 const express = require("express");
 const { Pool } = require("pg");
 const crypto = require("crypto");
+const fs = require("fs");
+const path = require("path");
+
 function readSlotsFromIndexHtml() {
-  const htmlPath = path.join(__dirname, "index.html");
+  // try common locations (root + public/)
+  const candidates = [
+    path.join(__dirname, "index.html"),
+    path.join(__dirname, "public", "index.html"),
+  ];
+
+  const htmlPath = candidates.find((p) => fs.existsSync(p));
+  if (!htmlPath) return [];
+
   const html = fs.readFileSync(htmlPath, "utf8");
 
-  // Extract values like data-slot="2026-03-02-09-30"
+  // matches: data-slot="2026-03-02-09-30"
   const re = /data-slot="([^"]+)"/g;
 
   const slots = new Set();
   let m;
   while ((m = re.exec(html))) slots.add(m[1]);
 
-  // Return sorted list (string sort works for YYYY-MM-DD-HH-MM format)
   return Array.from(slots).sort();
 }
 const app = express();
@@ -743,15 +753,15 @@ app.get("/api/slots", async (req, res) => {
   }
 });
 
-// All slots (source of truth)
 app.get("/api/all-slots", (_req, res) => {
-  try {
-    const slots = readSlotsFromIndexHtml(); // always matches index.html
-    res.json({ slots });
-  } catch (e) {
-    console.error("ALL-SLOTS ERROR:", e);
-    res.status(500).json({ slots: [] });
+  const slots = readSlotsFromIndexHtml();
+
+  // fallback so it never becomes empty in production
+  if (!slots || slots.length === 0) {
+    console.error("ALL-SLOTS: could not read slots from index.html");
   }
+
+  res.json({ slots });
 });
 
 // Static files

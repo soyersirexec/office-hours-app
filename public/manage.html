@@ -106,6 +106,8 @@ cancelBtn.onclick = async () => {
 
   if (data.ok) {
     msg.textContent = "Your booking has been cancelled.";
+    await load();
+return;
     cancelBtn.classList.add("hidden");
     changeWrap.classList.add("hidden");
     info.innerHTML = "";

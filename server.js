@@ -290,11 +290,12 @@ function escapeHtml(s) {
     .replaceAll('"', "&quot;")
     .replaceAll("'", "&#039;");
 }
-// ===== Google Calendar integration =====
-const { google } = require("googleapis");
+// ===== Google Calendar integration (startup-safe) =====
 
 const GOOGLE_CALENDAR_ID = process.env.GOOGLE_CALENDAR_ID;
-let _gcalClient = null;
+
+let _google = null;     // will hold googleapis.google
+let _gcalClient = null; // cached calendar client
 
 const GCAL_TZ = "Europe/Istanbul";
 const GCAL_EVENT_MINUTES = 45;
@@ -339,6 +340,13 @@ function loadServiceAccountCreds() {
   return null;
 }
 
+function getGoogle() {
+  if (_google) return _google;
+  // Lazy-load googleapis ONLY when needed (prevents slow deploy/cold start)
+  _google = require("googleapis").google;
+  return _google;
+}
+
 async function getGoogleClient() {
   if (_gcalClient) return _gcalClient;
 
@@ -361,6 +369,8 @@ async function getGoogleClient() {
     return null;
   }
 
+  const google = getGoogle();
+
   const auth = new google.auth.JWT({
     email: clientEmail,
     key: privateKey,
@@ -379,8 +389,7 @@ async function getGoogleClient() {
   return _gcalClient;
 }
 
-// Accepts slot like: YYYY-MM-DD-HH-MM  (your app format)
-// Produces RFC3339 using Europe/Istanbul.
+// slot: YYYY-MM-DD-HH-MM (sessions 09:00–15:00, no midnight crossing)
 function slotToGCalTimes(slot) {
   const s = String(slot || "").trim();
   const parts = s.split("-");
@@ -392,16 +401,16 @@ function slotToGCalTimes(slot) {
 
   if (!Number.isFinite(hh) || !Number.isFinite(mm)) return null;
 
+  // Optional: enforce your business hours
+  if (hh < 9 || hh > 15) return null;
+
   const startMinutes = hh * 60 + mm;
   const endMinutes = startMinutes + GCAL_EVENT_MINUTES;
 
   const endH = Math.floor(endMinutes / 60);
   const endM = endMinutes % 60;
 
-  // If you never allow slots that cross midnight, this is enough.
-  // (If you *do* allow crossing midnight, tell me and I’ll add date rollover.)
   const pad = (n) => String(n).padStart(2, "0");
-
   const startLocal = `${date}T${pad(hh)}:${pad(mm)}:00`;
   const endLocal = `${date}T${pad(endH)}:${pad(endM)}:00`;
 
@@ -415,15 +424,15 @@ async function createGoogleCalendarEvent({ slot, name, studentNo, email }) {
 
     const times = slotToGCalTimes(slot);
     if (!times) {
-      console.error("GCAL TIME ERROR: invalid slot format", { slot });
+      console.error("GCAL TIME ERROR: invalid slot/time", { slot });
       return;
     }
 
     const { startLocal, endLocal } = times;
 
-    // Validate range before sending to Google
-    const startMs = Date.parse(`${startLocal}+03:00`);
-    const endMs = Date.parse(`${endLocal}+03:00`);
+    // Strict range check (should always pass with the math above)
+    const startMs = Date.parse(startLocal);
+    const endMs = Date.parse(endLocal);
     if (!Number.isFinite(startMs) || !Number.isFinite(endMs) || endMs <= startMs) {
       console.error("GCAL TIME ERROR: empty/invalid range", { slot, startLocal, endLocal, startMs, endMs });
       return;
@@ -448,9 +457,8 @@ async function createGoogleCalendarEvent({ slot, name, studentNo, email }) {
   }
 }
 
-module.exports = {
-  createGoogleCalendarEvent,
-};
+// export if you keep this in its own file
+module.exports = { createGoogleCalendarEvent };
 // ---------- Allow-list (CSV of student numbers only) ----------
 const allowedCsvPath = path.join(__dirname, "allowed_students.csv");
 function normStudentNo(v) {
@@ -616,12 +624,8 @@ sendManageLinkEmail({ to: em, name: nm, slot, token: manageToken }).catch((e) =>
 );
 
 /// Fire-and-forget Google Calendar (never block the API response)
-createGoogleCalendarEvent({
-  slot,
-  name: nm,
-  studentNo: sn,
-  email: em,
-}).catch((e) => console.error("GCAL ERROR:", e?.message || e));
+ccreateGoogleCalendarEvent({ slot, name: nm, studentNo: sn, email: em })
+  .catch((e) => console.error("GCAL ERROR:", e?.message || e));
 
 return;
 

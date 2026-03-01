@@ -278,15 +278,17 @@ function getGoogleClient() {
 
     const { google } = require("googleapis");
 
-    const auth = new google.auth.JWT(
-      creds.client_email,
-      null,
-      creds.private_key,
-      ["https://www.googleapis.com/auth/calendar"]
-    );
+const auth = new google.auth.JWT(
+  creds.client_email,
+  null,
+  (creds.private_key || "").replace(/\\n/g, "\n"),
+  ["https://www.googleapis.com/auth/calendar"]
+);
 
-    _gcalClient = google.calendar({ version: "v3", auth });
-    return _gcalClient;
+auth.authorize().catch(e => console.error("GCAL AUTH ERROR:", e?.message || e));
+
+_gcalClient = google.calendar({ version: "v3", auth });
+return _gcalClient;
   } catch (e) {
     console.error("GCAL INIT ERROR:", e);
     return null;

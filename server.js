@@ -111,6 +111,9 @@ function isPastSlot(slot) {
 //   PUBLIC_BASE_URL=https://YOUR-RENDER-URL.onrender.com
 const RESEND_API_KEY = process.env.RESEND_API_KEY;
 const RESEND_FROM = process.env.RESEND_FROM;
+
+
+async function sendManageLinkEmail({ to, name, slot, token }) {
 const PUBLIC_BASE_URL = process.env.PUBLIC_BASE_URL;
 
 
@@ -165,6 +168,8 @@ const PUBLIC_BASE_URL = process.env.PUBLIC_BASE_URL;
   } catch (e) {
     console.error("EMAIL: Resend error:", e);
   }
+
+}
 
 async function sendCancelledEmail({ to, name, oldSlot }) {
   if (!RESEND_API_KEY || !RESEND_FROM) return;

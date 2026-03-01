@@ -420,25 +420,13 @@ function slotToGCalTimes(slot) {
 async function createGoogleCalendarEvent({ slot, name, studentNo, email }) {
   try {
     const calendar = await getGoogleClient();
-    if (!calendar) return;
+    if (!calendar) return null;
 
     const times = slotToGCalTimes(slot);
-    if (!times) {
-      console.error("GCAL TIME ERROR: invalid slot/time", { slot });
-      return;
-    }
-
+    if (!times) return null;
     const { startLocal, endLocal } = times;
 
-    // Strict range check (should always pass with the math above)
-    const startMs = Date.parse(startLocal);
-    const endMs = Date.parse(endLocal);
-    if (!Number.isFinite(startMs) || !Number.isFinite(endMs) || endMs <= startMs) {
-      console.error("GCAL TIME ERROR: empty/invalid range", { slot, startLocal, endLocal, startMs, endMs });
-      return;
-    }
-
-    await withTimeout(
+    const resp = await withTimeout(
       calendar.events.insert({
         calendarId: GOOGLE_CALENDAR_ID,
         requestBody: {
@@ -451,11 +439,74 @@ async function createGoogleCalendarEvent({ slot, name, studentNo, email }) {
       "GCAL INSERT"
     );
 
-    console.log("GCAL: event created for", slot);
+    const eventId = resp?.data?.id || null;
+    console.log("GCAL: event created for", slot, "id=", eventId);
+    return eventId;
   } catch (err) {
     console.error("GCAL CREATE ERROR:", err?.message || err);
+    return null;
   }
 }
+
+async function updateGoogleCalendarEvent({ eventId, slot, name, studentNo, email }) {
+  try {
+    const calendar = await getGoogleClient();
+    if (!calendar || !eventId) return false;
+
+    const times = slotToGCalTimes(slot);
+    if (!times) return false;
+    const { startLocal, endLocal } = times;
+
+    await withTimeout(
+      calendar.events.patch({
+        calendarId: GOOGLE_CALENDAR_ID,
+        eventId,
+        requestBody: {
+          summary: `Speaking Center – ${name} (${studentNo})`,
+          description: `Student: ${name}\nStudent No: ${studentNo}\nEmail: ${email}\nSlot: ${slot}`,
+          start: { dateTime: startLocal, timeZone: GCAL_TZ },
+          end: { dateTime: endLocal, timeZone: GCAL_TZ },
+        },
+      }),
+      "GCAL PATCH"
+    );
+
+    console.log("GCAL: event updated", eventId, "->", slot);
+    return true;
+  } catch (err) {
+    console.error("GCAL UPDATE ERROR:", err?.message || err);
+    return false;
+  }
+}
+
+async function deleteGoogleCalendarEvent({ eventId }) {
+  try {
+    const calendar = await getGoogleClient();
+    if (!calendar || !eventId) return false;
+
+    await withTimeout(
+      calendar.events.delete({
+        calendarId: GOOGLE_CALENDAR_ID,
+        eventId,
+      }),
+      "GCAL DELETE"
+    );
+
+    console.log("GCAL: event deleted", eventId);
+    return true;
+  } catch (err) {
+    // If already deleted, Google often returns 404 — treat as “done”
+    if (String(err?.code) === "404") return true;
+    console.error("GCAL DELETE ERROR:", err?.message || err);
+    return false;
+  }
+}
+
+module.exports = {
+  createGoogleCalendarEvent,
+  updateGoogleCalendarEvent,
+  deleteGoogleCalendarEvent,
+};
 
 // export if you keep this in its own file
 module.exports = { createGoogleCalendarEvent };
@@ -524,6 +575,7 @@ const pool = new Pool({
     await pool.query(
       `ALTER TABLE bookings ADD COLUMN IF NOT EXISTS manage_token_created_at TIMESTAMPTZ NOT NULL DEFAULT NOW();`
     );
+    await pool.query(`ALTER TABLE bookings ADD COLUMN IF NOT EXISTS gcal_event_id TEXT;`);
 
     await pool.query(`
       CREATE UNIQUE INDEX IF NOT EXISTS bookings_manage_token_hash_unique
@@ -603,8 +655,8 @@ app.post("/api/book", async (req, res) => {
     const manageTokenHash = crypto.createHash("sha256").update(manageToken).digest("hex");
 
     const q = `
-      INSERT INTO bookings (slot, name, student_no, email, manage_token_hash)
-      VALUES ($1, $2, $3, $4, $5)
+      INSERT INTO bookings (slot, name, student_no, email, manage_token_hash, gcal_event_id)
+VALUES ($1, $2, $3, $4, $5, $6)
       ON CONFLICT (slot) DO NOTHING
       RETURNING slot
     `;
@@ -615,15 +667,21 @@ app.post("/api/book", async (req, res) => {
       return res.status(409).json({ ok: false, error: "Slot already booked" });
     }
 
-    // respond immediately (don't wait for email/calendar)
-res.json({ ok: true, manageToken });
 
 
-// Fire-and-forget Google Calendar (never block the API response)
+
+// Fire-and-forget Google Calendar (create + store event id)
 createGoogleCalendarEvent({ slot, name: nm, studentNo: sn, email: em })
+  .then((eventId) => {
+    if (!eventId) return;
+    return pool.query(
+      "UPDATE bookings SET gcal_event_id = $1 WHERE manage_token_hash = $2",
+      [eventId, manageTokenHash]
+    );
+  })
   .catch((e) => console.error("GCAL ERROR:", e?.message || e));
 
-// respond once (include manageToken if you use it)
+// respond ONCE
 return res.json({ ok: true, manageToken });
   } catch (err) {
   console.error("BOOK ERROR:", err);
@@ -667,7 +725,7 @@ app.post("/api/manage/cancel", async (req, res) => {
 
     // get booking first so we can email details
     const cur = await pool.query(
-      `SELECT slot, name, email
+      `SELECT slot, name, email, gcal_event_id
        FROM bookings
        WHERE manage_token_hash = $1
        LIMIT 1`,
@@ -688,14 +746,21 @@ app.post("/api/manage/cancel", async (req, res) => {
     if (result.rowCount === 0) return res.status(404).json({ ok: false, error: "not_found" });
 
     // fire-and-forget email
-    sendCancelledEmail({ to: b.email, name: b.name, oldSlot: b.slot }).catch((e) =>
-      console.error("EMAIL CANCEL ERROR:", e)
-    );
+sendCancelledEmail({ to: b.email, name: b.name, oldSlot: b.slot }).catch((e) =>
+  console.error("EMAIL CANCEL ERROR:", e)
+);
 
-    return res.json({ ok: true, cancelledSlot: result.rows[0].slot });
+// fire-and-forget gcal delete (MUST be before return)
+if (b.gcal_event_id) {
+  deleteGoogleCalendarEvent({ eventId: b.gcal_event_id })
+    .catch((e) => console.error("GCAL DELETE ERROR:", e?.message || e));
+}
+
+return res.json({ ok: true, cancelledSlot: result.rows[0].slot });
   } catch (err) {
     console.error("MANAGE CANCEL ERROR:", err);
     return res.status(500).json({ ok: false, error: "db_error" });
+    
   }
 });
 
@@ -714,7 +779,7 @@ app.post("/api/manage/change", async (req, res) => {
     const tokenHash = crypto.createHash("sha256").update(token).digest("hex");
 
     const cur = await client.query(
-      `SELECT slot, name, student_no, email
+      `SELECT slot, name, email, gcal_event_id
        FROM bookings
        WHERE manage_token_hash = $1
        LIMIT 1`,
@@ -742,12 +807,38 @@ app.post("/api/manage/change", async (req, res) => {
     await client.query(`DELETE FROM bookings WHERE manage_token_hash = $1`, [tokenHash]);
 
     await client.query(
-      `INSERT INTO bookings (slot, name, student_no, email, manage_token_hash)
-       VALUES ($1, $2, $3, $4, $5)`,
-      [newSlot, current.name, current.student_no, current.email, tokenHash]
+      `INSERT INTO bookings (slot, name, student_no, email, manage_token_hash, gcal_event_id)
+VALUES ($1, $2, $3, $4, $5, $6)`,
+      [newSlot, current.name, current.student_no, current.email, tokenHash, current.gcal_event_id || null]
     );
 
     await client.query("COMMIT");
+    // fire-and-forget: update existing calendar event if we have one
+if (current.gcal_event_id) {
+  updateGoogleCalendarEvent({
+    eventId: current.gcal_event_id,
+    slot: newSlot,
+    name: current.name,
+    studentNo: current.student_no,
+    email: current.email,
+  }).catch((e) => console.error("GCAL UPDATE ERROR:", e?.message || e));
+} else {
+  // no event id stored yet -> create one and store it
+  createGoogleCalendarEvent({
+    slot: newSlot,
+    name: current.name,
+    studentNo: current.student_no,
+    email: current.email,
+  })
+    .then((eventId) => {
+      if (!eventId) return;
+      return pool.query(
+        "UPDATE bookings SET gcal_event_id = $1 WHERE manage_token_hash = $2",
+        [eventId, tokenHash]
+      );
+    })
+    .catch((e) => console.error("GCAL CREATE/STORE ERROR:", e?.message || e));
+}
     sendChangedEmail({
   to: current.email,
   name: current.name,

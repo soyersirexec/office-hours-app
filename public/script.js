@@ -311,34 +311,33 @@ document.addEventListener("DOMContentLoaded", async () => {
   movePastDays();
 
 
-  // ---- Load bookings from server + apply on UI ----
-  let serverBooked = {};
+  // ---- Load booked slots from server + apply on UI ----
+  // Public endpoint returns ONLY slot IDs (no names / PII)
+  let serverBookedSet = new Set();
 
   async function loadBookedFromServer() {
     try {
       const resp = await fetch("/api/availability", { cache: "no-store" });
-      if (!resp.ok) return {};
-      return await resp.json();
+      if (!resp.ok) return new Set();
+      const data = await resp.json();
+      const booked = Array.isArray(data?.booked) ? data.booked : [];
+      return new Set(booked);
     } catch {
-      return {};
+      return new Set();
     }
   }
 
-  serverBooked = await loadBookedFromServer();
+  serverBookedSet = await loadBookedFromServer();
 
   // Apply server bookings (disable ONLY the booked slot)
   document.querySelectorAll(".slot[data-slot]").forEach((btn) => {
-  const booking = serverBooked[btn.dataset.slot];
+  const isBooked = serverBookedSet.has(btn.dataset.slot);
 
-  if (booking) {
+  if (isBooked) {
     disableSlot(btn, true);
     btn.classList.add("booked-slot");
 
-    if (booking.name) {
-  btn.title = `Booked by: ${maskName(booking.name)}`;
-} else {
-  btn.title = "Booked";
-}
+    btn.title = "Booked";
   } else {
     btn.classList.remove("booked-slot"); // 🔥 ensure free slots stay clean
     btn.title = "";
@@ -351,9 +350,9 @@ document.addEventListener("DOMContentLoaded", async () => {
   if (slot.disabled) return;
 
   // Block if this specific slot is already booked
-  if (serverBooked[slot.dataset.slot]) {
+  if (serverBookedSet.has(slot.dataset.slot)) {
     slot.classList.add("booked-slot");   // 🔒 add only here
-slot.title = `Booked by: ${maskName(profile.name)}`;
+    slot.title = "Booked";
     disableSlot(slot, true);
     notify({
       type: "warn",
@@ -450,8 +449,8 @@ slot.title = `Booked by: ${maskName(profile.name)}`;
   }
 
   // Success
-  serverBooked[slot.dataset.slot] = { bookedAt: Date.now(), name: profile.name };
-  slot.title = `Booked by: ${profile.name}`;
+  serverBookedSet.add(slot.dataset.slot);
+  slot.title = "Booked";
   disableSlot(slot, true);
 
   notify({

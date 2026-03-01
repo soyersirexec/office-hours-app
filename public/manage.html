@@ -71,7 +71,11 @@ async function load() {
   const data = await resp.json().catch(() => ({}));
 
   if (!data.ok) {
-    info.textContent = "Booking not found.";
+    if (data.error === "token_expired") {
+      info.textContent = "This manage link has expired. Please book again or request a new link.";
+    } else {
+      info.textContent = "Booking not found.";
+    }
     return;
   }
 
@@ -110,7 +114,9 @@ cancelBtn.onclick = async () => {
     changeWrap.classList.add("hidden");
     info.innerHTML = "";
   } else {
-    msg.textContent = "Cancel failed.";
+    msg.textContent = data.error === "token_expired"
+      ? "This manage link has expired. Please book again or request a new link."
+      : "Cancel failed.";
     cancelBtn.disabled = false;
     changeBtn.disabled = false;
     slotSelect.disabled = false;
@@ -152,7 +158,9 @@ changeBtn.onclick = async () => {
     cancelBtn.disabled = false;
     slotSelect.disabled = false;
   } else {
-    msg.textContent = "Change failed.";
+    msg.textContent = data.error === "token_expired"
+      ? "This manage link has expired. Please book again or request a new link."
+      : "Change failed.";
     changeBtn.disabled = false;
     cancelBtn.disabled = false;
     slotSelect.disabled = false;
@@ -166,16 +174,18 @@ async function loadAvailableSlots() {
 
   try {
     const [bookedResp, allResp] = await Promise.all([
-      fetch("/api/bookings", { cache: "no-store" }),
+      fetch("/api/availability", { cache: "no-store" }),
       fetch("/api/all-slots", { cache: "no-store" })
     ]);
 
-    const booked = await bookedResp.json();
+    const bookedData = await bookedResp.json();
     const allSlots = await allResp.json();
+
+    const bookedSet = new Set(Array.isArray(bookedData?.booked) ? bookedData.booked : []);
 
     const available = (Array.isArray(allSlots) ? allSlots : [])
       .filter((s) => s && s !== currentSlot)
-      .filter((s) => !booked[s]);
+      .filter((s) => !bookedSet.has(s));
 
     slotSelect.innerHTML =
       `<option value="">Select a new slot</option>` +

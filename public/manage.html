@@ -166,28 +166,25 @@ async function loadAvailableSlots() {
 
   try {
     const [availResp, allResp] = await Promise.all([
-      fetch(`/api/availability?t=${Date.now()}`, { cache: "no-store" }),
-      fetch(`/api/all-slots?t=${Date.now()}`, { cache: "no-store" })
+      // Availability returns { booked: ["YYYY-MM-DD-HH-MM", ...] }
+      fetch("/api/availability", { cache: "no-store" }),
+      fetch("/api/all-slots", { cache: "no-store" })
     ]);
 
     const availData = await availResp.json().catch(() => ({}));
-    const bookedArr = Array.isArray(availData.booked) ? availData.booked : [];
-    const bookedSet = new Set(bookedArr);
+    const bookedArr = Array.isArray(availData?.booked) ? availData.booked : [];
+    const bookedSet = new Set(bookedArr.filter(Boolean));
 
     const allSlots = await allResp.json().catch(() => []);
     const available = (Array.isArray(allSlots) ? allSlots : [])
       .filter((s) => s && s !== currentSlot)
       .filter((s) => !bookedSet.has(s));
-
     slotSelect.innerHTML =
       `<option value="">Select a new slot</option>` +
       available.map((s) => `<option value="${escapeAttr(s)}">${escapeHtml(formatSlot(s))}</option>`).join("");
 
     slotSelect.disabled = false;
-    changeBtn.disabled = available.length === 0;
-    if (available.length === 0) {
-      msg.textContent = "No other slots are available right now.";
-    }
+    changeBtn.disabled = false;
   } catch (e) {
     slotSelect.innerHTML = `<option value="">Could not load slots</option>`;
     slotSelect.disabled = false;

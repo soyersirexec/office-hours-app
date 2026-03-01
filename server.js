@@ -263,36 +263,56 @@ function escapeHtml(s) {
 }
 // ===== Google Calendar integration =====
 const GOOGLE_CALENDAR_ID = process.env.GOOGLE_CALENDAR_ID;
-
 let _gcalClient = null;
+
+function loadServiceAccountCreds() {
+  const raw = process.env.GOOGLE_SERVICE_ACCOUNT_JSON;
+  const b64 = process.env.GOOGLE_SERVICE_ACCOUNT_JSON_B64;
+
+  try {
+    if (raw && raw.trim().startsWith("{")) return JSON.parse(raw);
+  } catch {}
+
+  try {
+    if (b64 && b64.trim()) {
+      const decoded = Buffer.from(b64.trim(), "base64").toString("utf8");
+      return JSON.parse(decoded);
+    }
+  } catch {}
+
+  return null;
+}
 
 function getGoogleClient() {
   if (_gcalClient) return _gcalClient;
-  try {
-    const json = process.env.GOOGLE_SERVICE_ACCOUNT_JSON;
-    if (!json) {
-      console.log("GCAL: disabled (missing GOOGLE_SERVICE_ACCOUNT_JSON)");
-      return null;
-    }
-    const creds = JSON.parse(json);
 
-    const { google } = require("googleapis");
-
-const auth = new google.auth.JWT(
-  creds.client_email,
-  null,
-  (creds.private_key || "").replace(/\\n/g, "\n"),
-  ["https://www.googleapis.com/auth/calendar"]
-);
-
-auth.authorize().catch(e => console.error("GCAL AUTH ERROR:", e?.message || e));
-
-_gcalClient = google.calendar({ version: "v3", auth });
-return _gcalClient;
-  } catch (e) {
-    console.error("GCAL INIT ERROR:", e);
+  const creds = loadServiceAccountCreds();
+  if (!creds) {
+    console.log("GCAL: disabled (missing GOOGLE_SERVICE_ACCOUNT_JSON or GOOGLE_SERVICE_ACCOUNT_JSON_B64)");
     return null;
   }
+
+  const pk = (creds.private_key || "").replace(/\\n/g, "\n").trim();
+  const ce = (creds.client_email || "").trim();
+
+  if (!pk || !ce) {
+    console.error("GCAL AUTH ERROR: missing client_email/private_key in creds");
+    return null;
+  }
+
+  const { google } = require("googleapis");
+  const auth = new google.auth.JWT(
+    ce,
+    null,
+    pk,
+    ["https://www.googleapis.com/auth/calendar"]
+  );
+
+  // Force token fetch so auth problems show clearly
+  auth.authorize().catch(e => console.error("GCAL AUTH ERROR:", e?.message || e));
+
+  _gcalClient = google.calendar({ version: "v3", auth });
+  return _gcalClient;
 }
 
 function slotToGCalTimes(slot) {

@@ -609,6 +609,17 @@ async function checkAppointmentFlow() {
   }
 
   const data = await resp.json().catch(() => ({}));
+  const booked = new Set(data.booked || []);
+
+document.querySelectorAll("[data-slot]").forEach(btn => {
+  if (booked.has(btn.dataset.slot)) {
+    btn.disabled = true;
+    btn.classList.add("booked");
+  } else {
+    btn.disabled = false;
+    btn.classList.remove("booked");
+  }
+});
 
   if (!resp.ok) {
     if (resp.status === 404 && data?.error === "not_found") {

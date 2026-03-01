@@ -4,7 +4,7 @@ function showManageLink(token) {
 
   // reuse your existing notify if you want, otherwise basic alert:
   if (typeof showNotify === "function") {
-    showNotify("Booked ✅", `Manage / cancel / change: ${url}`);
+    alert("Booked! Check your email for the manage link.");
     return;
   }
 

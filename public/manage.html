@@ -74,7 +74,8 @@ async function load() {
     return;
   }
 
-  currentSlot = data.booking ? data.booking.slot : null;
+  const b = data.booking || {};   // ✅ define b
+  currentSlot = b.slot || null;   // ✅ use b
 
   info.innerHTML = `
     <div><b>Name:</b> ${escapeHtml(b.name || "")}</div>

@@ -261,7 +261,76 @@ function escapeHtml(s) {
     .replaceAll('"', "&quot;")
     .replaceAll("'", "&#039;");
 }
+// ===== Google Calendar integration =====
+const GOOGLE_CALENDAR_ID = process.env.GOOGLE_CALENDAR_ID;
 
+let _gcalClient = null;
+
+function getGoogleClient() {
+  if (_gcalClient) return _gcalClient;
+  try {
+    const json = process.env.GOOGLE_SERVICE_ACCOUNT_JSON;
+    if (!json) {
+      console.log("GCAL: disabled (missing GOOGLE_SERVICE_ACCOUNT_JSON)");
+      return null;
+    }
+    const creds = JSON.parse(json);
+
+    const { google } = require("googleapis");
+
+    const auth = new google.auth.JWT(
+      creds.client_email,
+      null,
+      creds.private_key,
+      ["https://www.googleapis.com/auth/calendar"]
+    );
+
+    _gcalClient = google.calendar({ version: "v3", auth });
+    return _gcalClient;
+  } catch (e) {
+    console.error("GCAL INIT ERROR:", e);
+    return null;
+  }
+}
+
+function slotToGCalTimes(slot) {
+  // slot format: YYYY-MM-DD-HH-MM
+  const date = slot.slice(0, 10);
+  const hh = slot.slice(11, 13);
+  const mm = slot.slice(14, 16);
+
+  const start = `${date}T${hh}:${mm}:00`;
+  const endDate = new Date(`${start}+03:00`);
+  endDate.setMinutes(endDate.getMinutes() + 45); // session duration
+
+  const pad = (n) => String(n).padStart(2, "0");
+  const end = `${endDate.getFullYear()}-${pad(endDate.getMonth()+1)}-${pad(endDate.getDate())}T${pad(endDate.getHours())}:${pad(endDate.getMinutes())}:00`;
+
+  return { start, end };
+}
+
+async function createGoogleCalendarEvent({ slot, name, studentNo, email }) {
+  try {
+    const calendar = getGoogleClient();
+    if (!calendar || !GOOGLE_CALENDAR_ID) return;
+
+    const { start, end } = slotToGCalTimes(slot);
+
+    await calendar.events.insert({
+      calendarId: GOOGLE_CALENDAR_ID,
+      requestBody: {
+        summary: `Speaking Center – ${name} (${studentNo})`,
+        description: `Student: ${name}\nStudent No: ${studentNo}\nEmail: ${email}\nSlot: ${slot}`,
+        start: { dateTime: start, timeZone: "Europe/Istanbul" },
+        end: { dateTime: end, timeZone: "Europe/Istanbul" },
+      },
+    });
+
+    console.log("GCAL: event created for", slot);
+  } catch (err) {
+    console.error("GCAL CREATE ERROR:", err?.message || err);
+  }
+}
 // ---------- Allow-list (CSV of student numbers only) ----------
 const allowedCsvPath = path.join(__dirname, "allowed_students.csv");
 function normStudentNo(v) {
@@ -422,6 +491,12 @@ app.post("/api/book", async (req, res) => {
     sendManageLinkEmail({ to: em, name: nm, slot, token: manageToken }).catch((e) =>
       console.error("EMAIL SEND ERROR:", e)
     );
+    createGoogleCalendarEvent({
+  slot,
+  name: nm,
+  studentNo: sn,
+  email: em,
+});
 
     return res.json({ ok: true, manageToken });
   } catch (err) {

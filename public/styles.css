@@ -140,7 +140,7 @@
 }
 
 .booked-slot::after {
-  content: " 🔒";
+  content: "";
 }
 
 .past-day {

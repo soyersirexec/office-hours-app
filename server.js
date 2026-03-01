@@ -124,7 +124,7 @@ async function sendManageLinkEmail({ to, name, slot, token }) {
   }
   if (!to) return;
 
-  const manageUrl = `${PUBLIC_BASE_URL}/manage.html?token=${encodeURIComponent(token)}`;
+  const manageUrl = `${PUBLIC_BASE_URL}/manage.html?token=${manageToken}&v=${Date.now()}`;
 
   const subject = "Speaking Center Appointment – Manage Link";
   const text =
@@ -844,7 +844,17 @@ app.get("/admin", (req, res) => {
 app.get("/admin-login", (req, res) => {
   return res.sendFile(path.join(__dirname, "public", "admin-login.html"));
 });
-
+app.use((req, res, next) => {
+  // never cache frontend assets; avoids "old version" bugs
+  if (
+    req.path.endsWith(".html") ||
+    req.path.endsWith(".js") ||
+    req.path.endsWith(".css")
+  ) {
+    res.setHeader("Cache-Control", "no-store, max-age=0");
+  }
+  next();
+});
 app.use(express.static(path.join(__dirname, "public")));
 
 // Self-ping (Render)

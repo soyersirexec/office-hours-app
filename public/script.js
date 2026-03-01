@@ -2,8 +2,6 @@ let notifyTimer = null;
 function showManageLink(token) {
   const url = `${location.origin}/manage.html?token=${encodeURIComponent(token)}`;
 
-
-  window.prompt("Manage / cancel / change link (copy):", url);
 }
 function notify({ type = "info", title = "Notice", message = "", ms } = {}) {
   const wrap = document.getElementById("notify");

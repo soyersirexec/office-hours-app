@@ -633,7 +633,10 @@ app.post("/api/book", async (req, res) => {
   const sn = normStudentNo(studentNo);
   const nm = String(name).trim();
   const em = String(email).trim().toLowerCase();
-  if (!em.endsWith("@ankaramedipol.edu.tr")) {
+  if (
+  !em.endsWith("@ankaramedipol.edu.tr") &&
+  !em.endsWith("@std.ankaramedipol.edu.tr")
+) {
   return res.status(400).json({ ok: false, error: "invalid_email_domain" });
 }
 

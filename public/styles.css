@@ -290,8 +290,9 @@ button {
 
 /* Booked slots (different from disabled) */
 .slot.booked-slot {
-  background-color: #cbd5f5;   /* blue-200 grayish */
-  color: #3730a3;              /* indigo-800 */
+  background-color: #fed7aa;   /* orange-200 (soft) */
+  color: #9a3412;              /* orange-800 text */
+  border: 1px solid #fdba74;   /* orange-300 border */
   cursor: not-allowed;
-  opacity: 1;                  /* override disabled opacity */
+  opacity: 1;
 }

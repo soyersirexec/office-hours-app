@@ -341,7 +341,20 @@ function applyBookedStateToUI(bookedSet) {
 
     const isTooFar = slotDate > maxDate;
 
-    if (isBooked || isTooFar) {
+// ⏱️ Disable if slot time is in the past
+const d = slotId.slice(0, 10);
+const hh = slotId.slice(11, 13);
+const mm = slotId.slice(14, 16);
+const slotStart = new Date(`${d}T${hh}:${mm}:00`);
+const isPast = Number.isFinite(slotStart.getTime()) && slotStart.getTime() < Date.now();
+
+    if (isPast) {
+  disableSlot(btn, true);
+  btn.title = "Past";
+  return;
+}
+
+if (isBooked || isTooFar) {
   disableSlot(btn, true);
 
   if (isBooked) {
@@ -351,16 +364,17 @@ function applyBookedStateToUI(bookedSet) {
     btn.title = "Available within 10 days only";
   }
 } else {
-      // If it was previously marked booked, restore it (so cancel/change shows as available)
-      if (btn.classList.contains("booked-slot")) {
-        btn.classList.remove("booked-slot");
-        btn.title = "";
-        // only re-enable if it isn't in the previous tab (past)
-        const card = btn.closest(".day-card");
-        const isPreviousCard = card && card.closest("#previousGrid");
-        if (!isPreviousCard) enableSlot(btn);
-      }
-    }
+  // Restore if it was previously marked booked
+  if (btn.classList.contains("booked-slot")) {
+    btn.classList.remove("booked-slot");
+    btn.title = "";
+  }
+
+  // Enable normally (but never re-enable slots shown in the "previous" grid)
+  const card = btn.closest(".day-card");
+  const isPreviousCard = card && card.closest("#previousGrid");
+  if (!isPreviousCard) enableSlot(btn);
+}
   });
 }
 

@@ -1,3 +1,26 @@
+/* Premium text rendering */
+html, body {
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+  font-kerning: normal;
+}
+
+/* Make bold/strong look modern (less chunky) */
+strong, b {
+  font-weight: 600;              /* instead of 700+ */
+  color: inherit;                /* avoid weird dark jumps */
+}
+
+/* Buttons + chips typography polish */
+button, .sc-check-btn {
+  letter-spacing: -0.01em;
+}
+
+/* Tiny global rhythm improvement */
+p, li, span, label {
+  line-height: 1.55;
+}
 .modal.hidden { display: none; }
 
 .modal {
@@ -205,7 +228,7 @@
   font-size: 13px;
   cursor: pointer;
   color: #f8fafc;
-  background: rgba(255,255,255,.08);
+  background-color: rgba(255,255,255,.08);
   box-shadow: 0 6px 16px rgba(0,0,0,.18);
   white-space: nowrap;
   transition: transform .06s ease, background .15s ease, border-color .15s ease;
@@ -216,37 +239,35 @@
   padding: 0 20px;     /* same side padding as banner */
 }
 .sc-check-btn:hover{
-  background: rgba(255,255,255,.12);
+  background-color: rgba(255,255,255,.12);
   border-color: rgba(255,255,255,.28);
+  filter: brightness(1.05);
 }
 
 .sc-check-btn:active{
-  transform: scale(.97);
+  transform: scale(.98);
 }
-.sc-check-btn:hover{ filter: brightness(1.05); }
-.sc-check-btn:active{ transform: scale(.98); }
 
 @media (max-width: 900px){
   .sc-info-grid{ grid-template-columns: 1fr; }
   .sc-check-btn{ width: 100%; }
+}
+
 @media (max-width: 900px){
   .sc-check-btn{
     padding: 7px 12px;
     font-size: 12.5px;
-    width: auto;           /* prevent full width */
-    max-width: 180px;      /* stops oversized look */
+    width: auto;
+    max-width: 180px;
   }
-
-  .sc-info-top{
-    align-items: center;   /* keeps button aligned with title */
-  }
+  .sc-info-top{ align-items: center; }
 }
+
 @media (max-width: 480px){
   .sc-check-btn{
     font-size: 12px;
     padding: 6px 10px;
   }
-}
 }
 
 #appointmentsSection {

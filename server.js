@@ -126,13 +126,59 @@ function slotToDate(slot) {
   const d = new Date(`${date}T${time}:00+03:00`);
   return Number.isNaN(d.getTime()) ? null : d;
 }
+function isoWeekKeyFromDate(d) {
+  // d is a JS Date
+  const date = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
+  // ISO week-year is based on Thursday
+  const day = date.getUTCDay() || 7; // Mon=1..Sun=7
+  date.setUTCDate(date.getUTCDate() + 4 - day);
 
+  const isoYear = date.getUTCFullYear();
+  const yearStart = new Date(Date.UTC(isoYear, 0, 1));
+  const week = Math.ceil((((date - yearStart) / 86400000) + 1) / 7);
+
+  return `${isoYear}-W${String(week).padStart(2, "0")}`;
+}
+
+function isoWeekKeyFromSlot(slot) {
+  const d = slotToDate(slot); // already Europe/Istanbul via +03:00
+  if (!d) return null;
+  return isoWeekKeyFromDate(d);
+}
+
+function nextIsoWeekKeyFromSlot(slot) {
+  const d = slotToDate(slot);
+  if (!d) return null;
+  const next = new Date(d.getTime() + 7 * 24 * 60 * 60 * 1000);
+  return isoWeekKeyFromDate(next);
+}
 function isPastSlot(slot) {
   const d = slotToDate(slot);
   if (!d) return false;
   return d.getTime() < Date.now();
 }
+  
+function isTooFarSlot(slot, maxDays = 10) {
+  // slot: YYYY-MM-DD-HH-MM
+  const s = String(slot || "").trim();
+  const parts = s.split("-");
+  if (parts.length < 5) return true;
 
+  const mm = Number(parts.pop());
+  const hh = Number(parts.pop());
+  const date = parts.join("-");
+
+  // Treat as Europe/Istanbul local time (UTC+03:00)
+  const startIso = `${date}T${String(hh).padStart(2,"0")}:${String(mm).padStart(2,"0")}:00+03:00`;
+
+  const startMs = Date.parse(startIso);
+  if (!Number.isFinite(startMs)) return true;
+
+  const nowMs = Date.now();
+  const diffDays = (startMs - nowMs) / (1000 * 60 * 60 * 24);
+
+  return diffDays > maxDays;
+}
 // ===== Resend email (no SMTP) =====
 // Render env vars you must set:
 //   RESEND_API_KEY=your_resend_api_key
@@ -579,6 +625,20 @@ const pool = new Pool({
       ON bookings (student_no)
       WHERE student_no IS NOT NULL;
     `);
+    await pool.query(`
+  CREATE TABLE IF NOT EXISTS booking_blocks (
+    id BIGSERIAL PRIMARY KEY,
+    student_no TEXT NOT NULL,
+    blocked_week_key TEXT NOT NULL,
+    reason TEXT NOT NULL DEFAULT 'cancel_penalty',
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+  );
+`);
+
+await pool.query(`
+  CREATE UNIQUE INDEX IF NOT EXISTS booking_blocks_unique
+  ON booking_blocks (student_no, blocked_week_key);
+`);
 
     console.log("DB ready: bookings table ok");
   } catch (err) {
@@ -629,6 +689,9 @@ app.post("/api/book", async (req, res) => {
   if (!slot || !name || !studentNo || !email) {
     return res.status(400).json({ ok: false, error: "Missing fields" });
   }
+  if (isTooFarSlot(slot, 10)) {
+    return res.status(400).json({ ok: false, error: "too_far" });
+  }
 
   const sn = normStudentNo(studentNo);
   const nm = String(name).trim();
@@ -639,7 +702,17 @@ app.post("/api/book", async (req, res) => {
 ) {
   return res.status(400).json({ ok: false, error: "invalid_email_domain" });
 }
-
+// === NEW: deny if student is blocked for this week ===
+    const weekKey = isoWeekKeyFromSlot(slot);
+    if (weekKey) {
+    const blocked = await pool.query(
+    `SELECT 1 FROM booking_blocks WHERE student_no = $1 AND blocked_week_key = $2 LIMIT 1`,
+    [sn, weekKey]
+  );
+  if (blocked.rowCount > 0) {
+    return res.status(403).json({ ok: false, error: "blocked_next_week" });
+  }
+}
   if (!ALLOWED_STUDENTS.has(sn)) {
     return res.status(403).json({ ok: false, error: "Not allowed" });
   }
@@ -720,10 +793,10 @@ app.post("/api/manage/cancel", async (req, res) => {
 
     // get booking first so we can email details
     const cur = await pool.query(
-      `SELECT slot, name, email, gcal_event_id
-       FROM bookings
-       WHERE manage_token_hash = $1
-       LIMIT 1`,
+      `SELECT slot, name, email, gcal_event_id, student_no
+      FROM bookings
+      WHERE manage_token_hash = $1
+      LIMIT 1`,
       [tokenHash]
     );
 
@@ -744,6 +817,18 @@ app.post("/api/manage/cancel", async (req, res) => {
     if (result.rowCount === 0) {
       // Idempotent cancel: booking already cancelled/deleted
       return res.json({ ok: true, alreadyCancelled: true });
+    }
+    // === NEW: cancel penalty => block NEXT week from booking ===
+    if (b.student_no) {
+    const blockedWeekKey = nextIsoWeekKeyFromSlot(b.slot);
+    if (blockedWeekKey) {
+    await pool.query(
+      `INSERT INTO booking_blocks (student_no, blocked_week_key, reason)
+       VALUES ($1, $2, 'cancel_penalty')
+       ON CONFLICT (student_no, blocked_week_key) DO NOTHING`,
+      [normStudentNo(b.student_no), blockedWeekKey]
+    );
+    }
     }
 
     // fire-and-forget email
@@ -772,6 +857,13 @@ app.post("/api/manage/change", async (req, res) => {
 
   if (!token) return res.status(400).json({ ok: false, error: "missing_token" });
   if (!newSlot) return res.status(400).json({ ok: false, error: "missing_newSlot" });
+    if (isPastSlot(newSlot)) {
+    return res.status(400).json({ ok: false, error: "past_slot" });
+  }
+
+  if (isTooFarSlot(newSlot, 10)) {
+    return res.status(400).json({ ok: false, error: "too_far" });
+  }
 
   const client = await pool.connect();
   try {

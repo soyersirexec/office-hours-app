@@ -34,6 +34,48 @@ function readSlotsFromIndexHtml() {
 const express = require("express");
 const { Pool } = require("pg");
 const crypto = require("crypto");
+const MAINTENANCE_MODE = true;
+
+app.use((req, res, next) => {
+  if (!MAINTENANCE_MODE) return next();
+
+  return res.status(503).send(`
+    <html>
+      <head>
+        <title>Maintenance</title>
+        <style>
+          body{
+            font-family: system-ui;
+            background:#f8fafc;
+            display:flex;
+            align-items:center;
+            justify-content:center;
+            height:100vh;
+            margin:0;
+            color:#111827;
+          }
+          .card{
+            background:white;
+            padding:40px;
+            border-radius:12px;
+            box-shadow:0 10px 30px rgba(0,0,0,0.08);
+            text-align:center;
+            max-width:420px;
+          }
+          h1{margin-bottom:10px}
+          p{color:#6b7280}
+        </style>
+      </head>
+      <body>
+        <div class="card">
+          <h1>Maintenance</h1>
+          <p>The Speaking Center system is temporarily offline for updates.</p>
+          <p>Please check back shortly.</p>
+        </div>
+      </body>
+    </html>
+  `);
+});
 
 const app = express();
 const PORT = process.env.PORT || 3000;

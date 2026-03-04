@@ -1135,7 +1135,44 @@ app.delete("/api/admin/cancel/:slot", requireAdmin, async (req, res) => {
     return res.status(500).json({ ok: false, error: "db_error" });
   }
 });
+// ===== Admin: view & remove cancel-block penalties =====
 
+// List all blocked students (most recent first)
+app.get("/api/admin/blocks", requireAdmin, async (req, res) => {
+  try {
+    const { rows } = await pool.query(
+      `SELECT id, student_no, blocked_week_key, reason, created_at
+       FROM booking_blocks
+       ORDER BY created_at DESC
+       LIMIT 500`
+    );
+    return res.json({ ok: true, blocks: rows });
+  } catch (err) {
+    console.error("ADMIN BLOCKS LIST ERROR:", err);
+    return res.status(500).json({ ok: false, error: "db_error" });
+  }
+});
+
+// Remove a specific block row by id (safest)
+app.delete("/api/admin/blocks/:id", requireAdmin, async (req, res) => {
+  const id = Number(req.params.id);
+  if (!Number.isFinite(id)) return res.status(400).json({ ok: false, error: "bad_id" });
+
+  try {
+    const result = await pool.query(
+      `DELETE FROM booking_blocks
+       WHERE id = $1
+       RETURNING id`,
+      [id]
+    );
+
+    if (result.rowCount === 0) return res.status(404).json({ ok: false, error: "not_found" });
+    return res.json({ ok: true });
+  } catch (err) {
+    console.error("ADMIN BLOCK DELETE ERROR:", err);
+    return res.status(500).json({ ok: false, error: "db_error" });
+  }
+});
 // Hide direct static access to admin.html; serve via /admin route only.
 app.get("/admin.html", (req, res) => res.status(404).send("Not found"));
 

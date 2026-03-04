@@ -34,6 +34,10 @@ function readSlotsFromIndexHtml() {
 const express = require("express");
 const { Pool } = require("pg");
 const crypto = require("crypto");
+
+
+const app = express();
+const PORT = process.env.PORT || 3000;
 const MAINTENANCE_MODE = true;
 
 app.use((req, res, next) => {
@@ -76,9 +80,6 @@ app.use((req, res, next) => {
     </html>
   `);
 });
-
-const app = express();
-const PORT = process.env.PORT || 3000;
 
 // Recommended: set ADMIN_PASSWORD in Render env vars instead of hardcoding
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || "CHANGE_ME_IN_RENDER_ENV";

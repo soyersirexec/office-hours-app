@@ -517,21 +517,53 @@
       </div>
     </div>
 
-    <!-- Tuesday 2026-05-19 -->
-    <div class="day-card p-5 bg-white rounded-2xl border border-gray-100 shadow-sm hover:shadow-md transition">
-      <h2 class="font-semibold text-[15px] md:text-base text-gray-600 mb-3">Tuesday, 19 May 2026</h2>
-      <div class="grid grid-cols-2 gap-2">
-        <button class="slot bg-green-500 hover:bg-green-600 text-white py-2 rounded-lg text-sm font-medium transition" data-slot="2026-05-19-09-00">09:00 - 09:30</button>
-        <button class="slot bg-green-500 hover:bg-green-600 text-white py-2 rounded-lg text-sm font-medium transition" data-slot="2026-05-19-09-30">09:30 - 10:00</button>
-        <button class="slot bg-green-500 hover:bg-green-600 text-white py-2 rounded-lg text-sm font-medium transition" data-slot="2026-05-19-10-15">10:15 - 10:45</button>
-        <button class="slot bg-green-500 hover:bg-green-600 text-white py-2 rounded-lg text-sm font-medium transition" data-slot="2026-05-19-10-45">10:45 - 11:15</button>
-        <button class="slot bg-green-500 hover:bg-green-600 text-white py-2 rounded-lg text-sm font-medium transition" data-slot="2026-05-19-11-15">11:15 - 11:45</button>
-        <button class="slot bg-green-500 hover:bg-green-600 text-white py-2 rounded-lg text-sm font-medium transition" data-slot="2026-05-19-12-00">12:00 - 12:30</button>
-        <button class="slot bg-green-500 hover:bg-green-600 text-white py-2 rounded-lg text-sm font-medium transition" data-slot="2026-05-19-13-15">13:15 - 13:45</button>
-        <button class="slot bg-green-500 hover:bg-green-600 text-white py-2 rounded-lg text-sm font-medium transition" data-slot="2026-05-19-13-45">13:45 - 14:15</button>
-        <button class="slot bg-green-500 hover:bg-green-600 text-white py-2 rounded-lg text-sm font-medium transition" data-slot="2026-05-19-14-30">14:30 - 15:00</button>
+    <!-- Tuesday 2026-05-19 (HOLIDAY) -->
+<div class="day-card p-5 bg-white rounded-2xl border border-gray-100 shadow-sm hover:shadow-md transition relative overflow-hidden">
+
+  <!-- subtle background -->
+  <div class="absolute inset-0 bg-gradient-to-br from-red-50/60 via-white to-slate-50"></div>
+
+  <!-- silhouette watermark -->
+  <div class="absolute inset-0 flex items-center justify-center pointer-events-none">
+    <!-- Atatürk PNG watermark -->
+<img
+  src="/img/ataturk-watermark.png"
+  alt=""
+  class="pointer-events-none select-none absolute inset-0 m-auto w-[420px] max-w-[92%] opacity-[0.07] grayscale"
+/>
+  </div>
+
+  <h2 class="relative font-semibold text-[15px] md:text-base text-gray-600 mb-3">
+    Tuesday, 19 May 2026
+  </h2>
+
+  <!-- SAME GRID HEIGHT AS NORMAL SLOT GRID -->
+  <div class="relative grid grid-cols-2 gap-2 min-h-[230px]">
+
+    <div class="col-span-2 flex flex-col items-center justify-center text-center px-3">
+
+      <div class="text-lg font-semibold text-gray-900">
+        19 Mayıs Atatürk’ü Anma,
+      </div>
+
+      <div class="text-lg font-semibold text-gray-900">
+        Gençlik ve Spor Bayramı
+      </div>
+
+      <p class="mt-2 text-sm text-gray-700">
+        Speaking Center is closed for the holiday.
+      </p>
+
+      <div class="mt-3 text-xs italic text-gray-500">
+        “Bütün ümidim gençliktedir.”  
+        <span class="font-semibold">— Mustafa Kemal Atatürk</span>
       </div>
     </div>
+
+  </div>
+</div>
+      
+    
 
     <!-- Monday 2026-05-25 -->
     <div class="day-card p-5 bg-white rounded-2xl border border-gray-100 shadow-sm hover:shadow-md transition">

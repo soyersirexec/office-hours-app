@@ -620,13 +620,26 @@ const pool = new Pool({
       WHERE manage_token_hash IS NOT NULL;
     `);
 
+    await pool.query(`ALTER TABLE bookings ADD COLUMN IF NOT EXISTS week_key TEXT;`);
+
+// Backfill for existing rows (safe; no deletes)
+await pool.query(`
+  UPDATE bookings
+  SET week_key =
+    to_char(
+      (to_timestamp(replace(slot, '-', ' '), 'YYYY MM DD HH MI') at time zone 'Europe/Istanbul')::date,
+      'IYYY-"W"IW'
+    )
+  WHERE week_key IS NULL;
+`);
+
+await pool.query(`
+  CREATE UNIQUE INDEX IF NOT EXISTS bookings_one_per_student_week
+  ON bookings (student_no, week_key)
+  WHERE student_no IS NOT NULL AND week_key IS NOT NULL;
+`);
     await pool.query(`
-      CREATE UNIQUE INDEX IF NOT EXISTS bookings_one_per_student_no
-      ON bookings (student_no)
-      WHERE student_no IS NOT NULL;
-    `);
-    await pool.query(`
-  CREATE TABLE IF NOT EXISTS booking_blocks (
+    CREATE TABLE IF NOT EXISTS booking_blocks (
     id BIGSERIAL PRIMARY KEY,
     student_no TEXT NOT NULL,
     blocked_week_key TEXT NOT NULL,
@@ -722,13 +735,13 @@ app.post("/api/book", async (req, res) => {
     const manageTokenHash = crypto.createHash("sha256").update(manageToken).digest("hex");
 
     const q = `
-      INSERT INTO bookings (slot, name, student_no, email, manage_token_hash)
-      VALUES ($1, $2, $3, $4, $5)
+      INSERT INTO bookings (slot, name, student_no, email, manage_token_hash, week_key)
+      VALUES ($1, $2, $3, $4, $5, $6)
       ON CONFLICT (slot) DO NOTHING
       RETURNING slot
     `;
 
-    const result = await pool.query(q, [slot, nm, sn, em, manageTokenHash]);
+    const result = await pool.query(q, [slot, nm, sn, em, manageTokenHash, weekKey]);
 
     if (result.rowCount === 0) {
       return res.status(409).json({ ok: false, error: "Slot already booked" });
@@ -753,6 +766,10 @@ app.post("/api/book", async (req, res) => {
     return res.json({ ok: true, manageToken });
   } catch (err) {
   console.error("BOOK ERROR:", err);
+
+  if (err && err.code === "23505") {
+  return res.status(409).json({ ok: false, error: "one_per_week" });
+  }
   if (res.headersSent) return;
   return res.status(500).json({ ok: false, error: "Server error" });
 }
@@ -864,6 +881,12 @@ app.post("/api/manage/change", async (req, res) => {
   if (isTooFarSlot(newSlot, 10)) {
     return res.status(400).json({ ok: false, error: "too_far" });
   }
+  
+  const newWeekKey = isoWeekKeyFromSlot(newSlot);
+if (!newWeekKey) {
+  return res.status(400).json({ ok: false, error: "bad_slot" });
+}
+  
 
   const client = await pool.connect();
   try {
@@ -900,9 +923,9 @@ app.post("/api/manage/change", async (req, res) => {
     await client.query(`DELETE FROM bookings WHERE manage_token_hash = $1`, [tokenHash]);
 
     await client.query(
-      `INSERT INTO bookings (slot, name, student_no, email, manage_token_hash, gcal_event_id)
-       VALUES ($1, $2, $3, $4, $5, $6)`,
-      [newSlot, current.name, current.student_no, current.email, tokenHash, current.gcal_event_id || null]
+      `INSERT INTO bookings (slot, name, student_no, email, manage_token_hash, gcal_event_id, week_key)
+      VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+    [newSlot, current.name, current.student_no, current.email, tokenHash, current.gcal_event_id || null, newWeekKey]
     );
 
     await client.query("COMMIT");

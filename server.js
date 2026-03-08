@@ -1234,11 +1234,11 @@ app.use(express.static(path.join(__dirname, "public")));
 
 // Self-ping (Render)
 const SELF_URL = process.env.RENDER_EXTERNAL_URL;
+
 if (SELF_URL) {
   setInterval(() => {
     fetch(SELF_URL)
-      .then(() => console.log("Self ping successful"))
-      .catch((err) => console.log("Self ping failed:", err.message));
+      .catch((err) => console.error("Self ping failed:", err.message));
   }, 4 * 60 * 1000);
 }
 

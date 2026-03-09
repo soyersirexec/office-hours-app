@@ -1311,6 +1311,7 @@ async function runReminderJob() {
   WHERE slot like to_char((now() AT TIME ZONE 'Europe/Istanbul') + interval '1 day', 'YYYY-MM-DD') || '%'
   AND reminder_sent = false
 `);
+console.log("Reminder query returned:", rows.length);
 
     for (const b of rows) {
 

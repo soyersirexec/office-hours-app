@@ -1309,24 +1309,26 @@ async function runReminderJob() {
     const { rows } = await pool.query(`
       SELECT slot, name, email
       FROM bookings
-      WHERE slot like to_char(now(), 'YYYY-MM-DD') || '%'
-      AND reminder_sent = false
+      WHERE slot like to_char(now() + interval '1 day', 'YYYY-MM-DD') || '%'
+AND reminder_sent = false
     `);
 
     for (const b of rows) {
-      await sendReminderEmail({
-        to: b.email,
-        name: b.name,
-        slot: b.slot
-      });
 
-      await pool.query(
-        `UPDATE bookings
-         SET reminder_sent = true
-         WHERE slot = $1`,
-        [b.slot]
-      );
-    }
+  await sendReminderEmail({
+    to: b.email,
+    name: b.name,
+    slot: b.slot
+  });
+
+  await pool.query(
+    `UPDATE bookings SET reminder_sent = true WHERE slot = $1`,
+    [b.slot]
+  );
+
+  // avoid Resend rate limit
+  await new Promise(r => setTimeout(r, 600));
+}
 
     if (rows.length > 0) {
       console.log("REMINDERS SENT:", rows.length);
@@ -1341,4 +1343,4 @@ app.listen(PORT, () => {
 });
 
 // run every 30 minutes
-setInterval(runReminderJob, 1000 * 10);
+setInterval(runReminderJob, 1000 * 60 * 30);

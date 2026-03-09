@@ -967,10 +967,10 @@ if (!newWeekKey) {
     await client.query(`DELETE FROM bookings WHERE manage_token_hash = $1`, [tokenHash]);
 
     await client.query(
-      `INSERT INTO bookings (slot, name, student_no, email, manage_token_hash, gcal_event_id, week_key)
-      VALUES ($1, $2, $3, $4, $5, $6, $7)`,
-    [newSlot, current.name, current.student_no, current.email, tokenHash, current.gcal_event_id || null, newWeekKey]
-    );
+  `INSERT INTO bookings (slot, name, student_no, email, manage_token_hash, gcal_event_id, week_key, reminder_sent)
+   VALUES ($1, $2, $3, $4, $5, $6, $7, false)`,
+  [newSlot, current.name, current.student_no, current.email, tokenHash, current.gcal_event_id || null, newWeekKey]
+);
 
     await client.query("COMMIT");
 
@@ -1254,7 +1254,91 @@ if (SELF_URL) {
       .catch((err) => console.error("Self ping failed:", err.message));
   }, 4 * 60 * 1000);
 }
+async function sendReminderEmail({ to, name, slot }) {
+  console.log("Running reminder job...");
+  if (!RESEND_API_KEY || !RESEND_FROM) return;
+  if (!to) return;
 
+  const subject = "Speaking Center Reminder – Tomorrow";
+  const text =
+    `Hello${name ? " " + name : ""},\n\n` +
+    `This is a reminder of your Speaking Center appointment tomorrow.\n\n` +
+    `Slot: ${slot}\n` +
+    `Location: MB-103 (Lower Level, Floor -1)\n` +
+    `Instructor: Serdar Soyer\n\n` +
+    `If you cannot attend, please use the link in your booking email to manage your appointment.\n`;
+
+  const html =
+    `<p>Hello${name ? " " + escapeHtml(name) : ""},</p>` +
+    `<p>This is a reminder of your Speaking Center appointment tomorrow.</p>` +
+    `<p><b>Slot:</b> ${escapeHtml(slot)}<br>` +
+    `<b>Location:</b> MB-103 (Lower Level, Floor -1)<br>` +
+    `<b>Instructor:</b> Serdar Soyer</p>` +
+    `<p>If you cannot attend, please use the link in your booking email to manage your appointment.</p>`;
+
+  try {
+    const resp = await fetch("https://api.resend.com/emails", {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${RESEND_API_KEY}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        from: RESEND_FROM,
+        to: [to],
+        subject,
+        html,
+        text,
+      }),
+    });
+
+    if (!resp.ok) {
+      const body = await resp.text().catch(() => "");
+      console.error("EMAIL: reminder failed", resp.status, body);
+      return;
+    }
+
+    console.log("EMAIL: reminder sent to", to);
+  } catch (e) {
+    console.error("EMAIL: reminder error:", e);
+  }
+}
+async function runReminderJob() {
+  console.log("Running reminder job...");
+  try {
+    const { rows } = await pool.query(`
+      SELECT slot, name, email
+      FROM bookings
+      WHERE slot like to_char(now(), 'YYYY-MM-DD') || '%'
+      AND reminder_sent = false
+    `);
+
+    for (const b of rows) {
+      await sendReminderEmail({
+        to: b.email,
+        name: b.name,
+        slot: b.slot
+      });
+
+      await pool.query(
+        `UPDATE bookings
+         SET reminder_sent = true
+         WHERE slot = $1`,
+        [b.slot]
+      );
+    }
+
+    if (rows.length > 0) {
+      console.log("REMINDERS SENT:", rows.length);
+    }
+
+  } catch (err) {
+    console.error("REMINDER JOB ERROR:", err);
+  }
+}
 app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
 });
+
+// run every 30 minutes
+setInterval(runReminderJob, 1000 * 10);

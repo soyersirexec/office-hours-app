@@ -1307,11 +1307,11 @@ async function runReminderJob() {
   console.log("Running reminder job...");
   try {
     const { rows } = await pool.query(`
-      SELECT slot, name, email
-      FROM bookings
-      WHERE slot like to_char(now() + interval '1 day', 'YYYY-MM-DD') || '%'
-AND reminder_sent = false
-    `);
+  SELECT slot, name, email
+  FROM bookings
+  WHERE slot like to_char((now() AT TIME ZONE 'Europe/Istanbul') + interval '1 day', 'YYYY-MM-DD') || '%'
+  AND reminder_sent = false
+`);
 
     for (const b of rows) {
 

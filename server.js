@@ -1306,32 +1306,33 @@ async function runReminderJob() {
   console.log("Running reminder job...");
   try {
     const { rows } = await pool.query(`
-  SELECT slot, name, email
-  FROM bookings
-  WHERE slot like to_char((now() AT TIME ZONE 'Europe/Istanbul'), 'YYYY-MM-DD') || '%'
-  AND reminder_sent = false
-`);
-console.log("Reminder query returned:", rows.length);
+      SELECT slot, name, email
+      FROM bookings
+      WHERE slot like to_char((now() AT TIME ZONE 'Europe/Istanbul'), 'YYYY-MM-DD') || '%'
+      AND reminder_sent = false
+    `);
+
+    console.log("Reminder query returned:", rows.length);
+
+    const now = new Date();
 
     for (const b of rows) {
+      const slotDate = slotToDate(b.slot);
+      if (!slotDate || slotDate <= now) continue; // skip past slots
 
-  await sendReminderEmail({
-    to: b.email,
-    name: b.name,
-    slot: b.slot
-  });
+      await sendReminderEmail({
+        to: b.email,
+        name: b.name,
+        slot: b.slot
+      });
 
-  await pool.query(
-    `UPDATE bookings SET reminder_sent = true WHERE slot = $1`,
-    [b.slot]
-  );
+      await pool.query(
+        `UPDATE bookings SET reminder_sent = true WHERE slot = $1`,
+        [b.slot]
+      );
 
-  // avoid Resend rate limit
-  await new Promise(r => setTimeout(r, 600));
-}
-
-    if (rows.length > 0) {
-      console.log("REMINDERS SENT:", rows.length);
+      // avoid Resend rate limit
+      await new Promise(r => setTimeout(r, 600));
     }
 
   } catch (err) {

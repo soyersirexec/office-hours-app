@@ -1255,7 +1255,6 @@ if (SELF_URL) {
   }, 4 * 60 * 1000);
 }
 async function sendReminderEmail({ to, name, slot }) {
-  console.log("Running reminder job...");
   if (!RESEND_API_KEY || !RESEND_FROM) return;
   if (!to) return;
 
@@ -1340,7 +1339,8 @@ async function runReminderJob() {
 }
 app.listen(PORT, () => {
   console.log(`Server running on port ${PORT}`);
+  runReminderJob();
 });
 
 // run every 30 minutes
-setInterval(runReminderJob, 1000 * 60 * 30);
+setInterval(runReminderJob, 1000 * 10);

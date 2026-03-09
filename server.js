@@ -866,6 +866,7 @@ app.post("/api/manage/cancel", async (req, res) => {
     }
 
     const b = cur.rows[0];
+    
 
     const result = await pool.query(
       `DELETE FROM bookings
@@ -1157,6 +1158,18 @@ app.delete("/api/admin/cancel/:slot", requireAdmin, async (req, res) => {
     }
 
     const b = cur.rows[0];
+    // Apply no-show / admin cancel penalty: block next week
+if (b.student_no) {
+  const blockedWeekKey = nextIsoWeekKeyFromSlot(b.slot);
+  if (blockedWeekKey) {
+    await pool.query(
+      `INSERT INTO booking_blocks (student_no, blocked_week_key, reason)
+       VALUES ($1, $2, 'missed_appointment')
+       ON CONFLICT (student_no, blocked_week_key) DO NOTHING`,
+      [normStudentNo(b.student_no), blockedWeekKey]
+    );
+  }
+}
 
     await pool.query("DELETE FROM bookings WHERE slot=$1", [slot]);
 

@@ -1303,7 +1303,7 @@ async function sendReminderEmail({ to, name, slot }) {
   }
 }
 async function runReminderJob() {
-  console.log("Running reminder job...");
+  
   try {
     const { rows } = await pool.query(`
       SELECT slot, name, email
@@ -1312,7 +1312,7 @@ async function runReminderJob() {
       AND reminder_sent = false
     `);
 
-    console.log("Reminder query returned:", rows.length);
+    
 
     const now = new Date();
 

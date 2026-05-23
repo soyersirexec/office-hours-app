@@ -369,7 +369,16 @@ if (isBooked || isTooFar) {
     btn.classList.remove("booked-slot");
     btn.title = "";
   }
+document.querySelectorAll('.day-card').forEach(card => {
+  const dateStr = card.dataset.date;
+  if (!dateStr) return;
 
+  const cardDate = new Date(dateStr);
+
+  if (cardDate < today) {
+    card.style.display = 'none';
+  }
+});
   // Enable normally (but never re-enable slots shown in the "previous" grid)
   const card = btn.closest(".day-card");
   const isPreviousCard = card && card.closest("#previousGrid");

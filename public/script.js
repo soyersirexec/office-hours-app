@@ -398,6 +398,19 @@ setInterval(() => {
     slot.addEventListener("click", async () => {
   if (slot.disabled) return;
 
+  document.querySelector('[data-slot="2026-06-16-09-00"]')
+  .disabled = true;
+  document.querySelector('[data-slot="2026-06-16-09-30"]')
+  .disabled = true;
+  document.querySelector('[data-slot="2026-06-16-10-15"]')
+  .disabled = true;
+  document.querySelector('[data-slot="2026-06-16-10-45"]')
+  .disabled = true;
+  document.querySelector('[data-slot="2026-06-16-11-30"]')
+  .disabled = true;
+  document.querySelector('[data-slot="2026-06-16-12-00"]')
+  .disabled = true;
+
   // Block if this specific slot is already booked
   if (serverBookedSet.has(slot.dataset.slot)) {
     slot.classList.add("booked-slot");   // 🔒 add only here

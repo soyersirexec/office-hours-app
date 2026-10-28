@@ -183,17 +183,27 @@ function isoWeekKeyFromDate(d) {
   return `${isoYear}-W${String(week).padStart(2, "0")}`;
 }
 
+function isoWeekKeyFromDateStr(ymd) {
+  const [y, m, d] = ymd.split("-").map(Number);
+  const date = new Date(Date.UTC(y, m - 1, d));
+  const day = date.getUTCDay() || 7; // Mon=1..Sun=7
+  date.setUTCDate(date.getUTCDate() + 4 - day); // Thursday of this ISO week
+  const isoYear = date.getUTCFullYear();
+  const yearStart = new Date(Date.UTC(isoYear, 0, 1));
+  const week = Math.ceil((((date - yearStart) / 86400000) + 1) / 7);
+  return `${isoYear}-W${String(week).padStart(2, "0")}`;
+}
+
 function isoWeekKeyFromSlot(slot) {
-  const d = slotToDate(slot); // already Europe/Istanbul via +03:00
-  if (!d) return null;
-  return isoWeekKeyFromDate(d);
+  if (!slotToDate(slot)) return null;
+  return isoWeekKeyFromDateStr(String(slot).slice(0, 10));
 }
 
 function nextIsoWeekKeyFromSlot(slot) {
-  const d = slotToDate(slot);
-  if (!d) return null;
-  const next = new Date(d.getTime() + 7 * 24 * 60 * 60 * 1000);
-  return isoWeekKeyFromDate(next);
+  if (!slotToDate(slot)) return null;
+  const [y, m, d] = String(slot).slice(0, 10).split("-").map(Number);
+  const plus7 = new Date(Date.UTC(y, m - 1, d + 7)).toISOString().slice(0, 10);
+  return isoWeekKeyFromDateStr(plus7);
 }
 function isPastSlot(slot) {
   const d = slotToDate(slot);
@@ -201,26 +211,45 @@ function isPastSlot(slot) {
   return d.getTime() < Date.now();
 }
   
-function isTooFarSlot(slot, maxDays = 10) {
-  // slot: YYYY-MM-DD-HH-MM
+// ---------- Booking window ----------
+// A slot opens for booking 10 days before its date (from 00:00 Istanbul time).
+// Example: Monday 9 Nov opens on Friday 30 Oct.
+// Separate rule: a student may book only ONE slot per ISO week (Mon-Sun; sessions
+// are Mon/Tue/Thu). Different weeks are independent, so Thursday this week and
+// Monday next week are both allowed - no 7-day gap is required between bookings.
+const BOOKING_OPENS_DAYS_BEFORE = 10;
+
+// Dates (YYYY-MM-DD) that are closed for booking. Add more here when needed.
+const BLOCKED_DATES = new Set([
+  "2026-11-05",
+]);
+
+function slotDateStr(slot) {
   const s = String(slot || "").trim();
-  const parts = s.split("-");
-  if (parts.length < 5) return true;
+  return /^\d{4}-\d{2}-\d{2}-\d{2}-\d{2}$/.test(s) ? s.slice(0, 10) : null;
+}
 
-  const mm = Number(parts.pop());
-  const hh = Number(parts.pop());
-  const date = parts.join("-");
+function isBlockedDate(slot) {
+  const d = slotDateStr(slot);
+  return !!d && BLOCKED_DATES.has(d);
+}
 
-  // Treat as Europe/Istanbul local time (UTC+03:00)
-  const startIso = `${date}T${String(hh).padStart(2,"0")}:${String(mm).padStart(2,"0")}:00+03:00`;
+function istanbulTodayParts() {
+  // Europe/Istanbul is a fixed UTC+03:00
+  const t = new Date(Date.now() + 3 * 60 * 60 * 1000);
+  return { y: t.getUTCFullYear(), m: t.getUTCMonth(), d: t.getUTCDate() };
+}
 
-  const startMs = Date.parse(startIso);
-  if (!Number.isFinite(startMs)) return true;
+function bookingWindowLastDateStr() {
+  const { y, m, d } = istanbulTodayParts();
+  const last = new Date(Date.UTC(y, m, d) + BOOKING_OPENS_DAYS_BEFORE * 86400000);
+  return last.toISOString().slice(0, 10);
+}
 
-  const nowMs = Date.now();
-  const diffDays = (startMs - nowMs) / (1000 * 60 * 60 * 24);
-
-  return diffDays > maxDays;
+function isTooFarSlot(slot) {
+  const d = slotDateStr(slot);
+  if (!d) return true;
+  return d > bookingWindowLastDateStr(); // YYYY-MM-DD compares correctly as a string
 }
 // ===== Resend email (no SMTP) =====
 // Render env vars you must set:
@@ -745,7 +774,10 @@ app.post("/api/book", async (req, res) => {
   if (!slot || !name || !studentNo || !email) {
     return res.status(400).json({ ok: false, error: "Missing fields" });
   }
-  if (isTooFarSlot(slot, 10)) {
+  if (isBlockedDate(slot)) {
+    return res.status(400).json({ ok: false, error: "date_unavailable" });
+  }
+  if (isTooFarSlot(slot)) {
     return res.status(400).json({ ok: false, error: "too_far" });
   }
 
@@ -922,7 +954,11 @@ app.post("/api/manage/change", async (req, res) => {
     return res.status(400).json({ ok: false, error: "past_slot" });
   }
 
-  if (isTooFarSlot(newSlot, 10)) {
+  if (isBlockedDate(newSlot)) {
+    return res.status(400).json({ ok: false, error: "date_unavailable" });
+  }
+
+  if (isTooFarSlot(newSlot)) {
     return res.status(400).json({ ok: false, error: "too_far" });
   }
   
@@ -1074,7 +1110,7 @@ app.get("/api/slots", async (req, res) => {
 // All slots (source of truth)
 // All slots (source of truth: parsed from index.html so Manage matches main page)
 app.get("/api/all-slots", (req, res) => {
-  const slots = readSlotsFromIndexHtml();
+  const slots = readSlotsFromIndexHtml().filter((sl) => !isBlockedDate(sl));
   return res.json(slots);
 });
 

@@ -1,3 +1,15 @@
+// ---- Booking rules (keep in sync with server.js) ----
+// A slot opens 10 days before its date (from 00:00 Istanbul time).
+const BOOKING_OPENS_DAYS_BEFORE = 10;
+// Dates closed for booking (YYYY-MM-DD)
+const BLOCKED_DATES = new Set(["2026-11-05"]);
+
+function bookingWindowLastDateStr() {
+  const t = new Date(Date.now() + 3 * 60 * 60 * 1000); // Istanbul = UTC+3
+  const today = Date.UTC(t.getUTCFullYear(), t.getUTCMonth(), t.getUTCDate());
+  return new Date(today + BOOKING_OPENS_DAYS_BEFORE * 86400000).toISOString().slice(0, 10);
+}
+
 let notifyTimer = null;
 function showManageLink(token) {
   const url = `${location.origin}/manage.html?token=${encodeURIComponent(token)}`;
@@ -331,15 +343,10 @@ function applyBookedStateToUI(bookedSet) {
     const slotId = btn.dataset.slot;
     const isBooked = bookedSet.has(slotId);
 
-    // 🔒 Disable if more than 10 days ahead
-    const slotDate = new Date(slotId.slice(0, 10));
-    const today = new Date();
-    today.setHours(0, 0, 0, 0);
-
-    const maxDate = new Date(today);
-    maxDate.setDate(maxDate.getDate() + 10);
-
-    const isTooFar = slotDate > maxDate;
+    // 🔒 Disable if the slot's date is more than 10 days away
+    const slotDateStr = slotId.slice(0, 10);
+    const isTooFar = slotDateStr > bookingWindowLastDateStr();
+    const isBlockedDate = BLOCKED_DATES.has(slotDateStr);
 
 // ⏱️ Disable if slot time is in the past
 const d = slotId.slice(0, 10);
@@ -354,14 +361,18 @@ const isPast = Number.isFinite(slotStart.getTime()) && slotStart.getTime() < Dat
   return;
 }
 
-if (isBooked || isTooFar) {
+if (isBlockedDate) {
+  disableSlot(btn, true);
+  btn.classList.remove("booked-slot");
+  btn.title = "Unavailable on this date";
+} else if (isBooked || isTooFar) {
   disableSlot(btn, true);
 
   if (isBooked) {
     btn.classList.add("booked-slot");
     btn.title = "Booked";
   } else {
-    btn.title = "Available within 10 days only";
+    btn.title = "Opens 10 days before the date";
   }
 } else {
   // Restore if it was previously marked booked
@@ -489,10 +500,18 @@ slot.title = 'Booked';
       return;
     }
 
+    const friendly = {
+      date_unavailable: "Booking is not available on this date.",
+      too_far: "Slots open 10 days before their date.",
+      past_slot: "This time slot has already passed.",
+      one_per_week: "You already have a booking this week (Mon–Sun). Next week is separate.",
+      blocked_next_week: "You are blocked from booking this week because of a cancellation/missed appointment.",
+      invalid_email_domain: "Please use your university email address.",
+    };
     notify({
       type: "error",
       title: "Booking failed",
-      message: data?.error || `Cannot book (${resp.status})`,
+      message: friendly[data?.error] || data?.error || `Cannot book (${resp.status})`,
       ms: 6000,
     });
     return;
